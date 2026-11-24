@@ -449,6 +449,7 @@ function viewGroupe(c) {
       <h3>Chargement</h3>
       ${items}
       <form class="quick-add" data-form="gItem" data-k="${k.id}"><input name="item" placeholder="Ajouter (ex. Tente, Rations ×4…)"><button class="btn small" type="submit">${icon('plus')}</button></form>
+      <div class="add-row"><button class="btn ghost small" data-act="gAddItem" data-k="${k.id}">${icon('bag')} Choisir dans la liste de matériel</button></div>
     </section>`;
   }).join('');
 
@@ -624,7 +625,7 @@ function groupCarrierDialog(k) {
 }
 
 // ---------- Bibliothèque (consultation) ----------
-const LIB_SECTIONS = [['armes', 'Armes'], ['armures', 'Armures'], ['sorts', 'Sorts'], ['tours', 'Tours'], ['capacites', 'Capacités']];
+const LIB_SECTIONS = [['armes', 'Armes'], ['armures', 'Armures'], ['materiel', 'Matériel'], ['sorts', 'Sorts'], ['tours', 'Tours'], ['capacites', 'Capacités']];
 function viewBiblio() {
   const sec = ui.libSection || 'armes';
   const row = (title, meta, body, search) => `<details class="lib-item" data-search="${esc(R.norm(search))}">
@@ -637,6 +638,12 @@ function viewBiblio() {
     content = [['Armes de contact', 'contact'], ['Armes à distance', 'distance']].map(([g, k]) => `<h3>${g}</h3>${L.WEAPONS.filter((w) => w.kind === k).map((w) => row(w.name, `${esc(w.damage)} · ${esc(R.SKILL[w.skill]?.name || '')}`,
       `${stats([['Compétence', R.SKILL[w.skill]?.name], ['Dégâts', w.damage], ['Bonus', w.bonus || 'aucun'], ['FOR min.', w.str || '—'], ['Prise', w.grip], ['Portée', w.range === 'FOR' ? 'FOR m' : w.range === 'FOR×2' ? 'FOR×2 m' : `${w.range} m`], ['Solidité', w.dur || '—'], ['Prix', w.cost]])}<p class="small">${esc(w.features)}</p>`,
       `${w.name} ${w.features} ${R.SKILL[w.skill]?.name}`)).join('')}`).join('');
+  }
+  if (sec === 'materiel') {
+    content = L.GEAR_CATS.map((cat) => `<h3>${cat}</h3>${L.GEAR.filter((x) => x.cat === cat).map((x) => row(x.name,
+      `${fmtMoney(x.cu)}${x.item ? ` · enc. ${x.w === 0.25 ? '¼' : x.w || '—'}` : ''}`,
+      `${stats([['Prix', fmtMoney(x.cu)], ...(x.item ? [['Encombrement', x.w === 0.25 ? '¼' : x.w || 'ne compte pas']] : [])])}<p class="small">${esc(x.desc)}</p>`,
+      `${x.name} ${x.desc} ${cat}`)).join('')}`).join('');
   }
   if (sec === 'armures') {
     content = [['Armures', 'armor'], ['Casques', 'helmet']].map(([g, k]) => `<h3>${g}</h3>${L.ARMORS.filter((a) => a.slot === k).map((a) => row(a.name, `Armure ${a.rating} · ${esc(a.cost)}`,
@@ -787,6 +794,7 @@ function viewSac(c) {
     <section class="card span-all">
       <h2>Équipement</h2>
       ${items}
+      <div class="add-row"><button class="btn ghost small" data-act="editItem" data-i="-1">${icon('bag')} Choisir dans la liste de matériel</button></div>
       <form class="quick-add" data-form="quickItem"><input name="item" placeholder="Ajouter un objet (ex. Corde, Torche…)"><button class="btn small" type="submit">${icon('plus')}</button></form>
     </section>
     <section class="card">
@@ -1213,22 +1221,58 @@ function editSpell(i, list = 'spells') {
   });
 }
 
+// Liste déroulante du matériel transportable (Sac, Groupe)
+function gearPicker() {
+  return libPicker(L.GEAR_CATS.map((cat) => [cat, L.GEAR.map((x, n) => [n, x]).filter(([, x]) => x.cat === cat && x.item)
+    .map(([n, x]) => [n, `${x.name} — ${fmtMoney(x.cu)}${x.w ? ` · enc. ${x.w === 0.25 ? '¼' : x.w}` : ''}`])]).filter(([, o]) => o.length), 'Liste de matériel');
+}
+// Remplit le formulaire depuis la liste et met à jour le prix d'achat affiché
+// label(total) : texte de la case d'achat pour un prix total donné
+function wireGearPicker(f, label) {
+  let unit = 0;
+  const refresh = () => {
+    const total = unit * Math.max(1, num(f.qty.value));
+    const lbl = f.querySelector('.buy-label');
+    if (lbl) lbl.textContent = total ? label(total) : 'Acheter (choisis d’abord un objet de la liste)';
+    if (f.buy) { f.buy.disabled = !total; if (!total) f.buy.checked = false; }
+  };
+  f.lib.onchange = () => {
+    const x = L.GEAR[f.lib.value];
+    if (!x) { unit = 0; refresh(); return; }
+    unit = x.cu;
+    f.name.value = x.name; f.weight.value = x.w; f.notes.value = x.desc;
+    if (f.worn) f.worn.checked = x.cat === 'Vêtements';
+    refresh();
+  };
+  f.qty.addEventListener('input', refresh);
+  refresh();
+  return () => unit * Math.max(1, num(f.qty.value));
+}
+const buyCheck = () => `<label class="check full"><input type="checkbox" name="buy" disabled><span class="buy-label"></span></label>`;
+
 function editItem(i) {
   const c = C(); const it = c.items[i] || { name: '', qty: 1, weight: 1, notes: '', worn: false };
   openDialog({
     title: i >= 0 ? it.name : 'Nouvel objet',
     body: `<div class="fields">
-      ${F.text('name', 'Nom', it.name, 'full', 'autofocus')}
+      ${i < 0 ? gearPicker() : ''}
+      ${F.text('name', 'Nom', it.name, 'full', i < 0 ? '' : 'autofocus')}
       ${F.num('qty', 'Quantité', it.qty)}
       ${F.num('weight', 'Encombrement (par unité)', it.weight)}
       ${F.area('notes', 'Notes', it.notes)}
       ${F.check('worn', 'Porté sur soi (ne compte pas : armure portée, vêtements…)', it.worn, 'full')}
+      ${i < 0 ? buyCheck() : ''}
       ${i >= 0 && store.group.carriers.length ? F.select('dest', 'Ranger dans le matériel du groupe', '', [['', '— Garder dans mon sac —'], ...store.group.carriers.map((k) => [k.id, `${carrierIcon(k)} ${k.name}`])], 'full') : ''}
     </div>`,
     actions: [
       ...(i >= 0 ? [{ label: icon('trash'), cls: 'ghost', onClick: () => { c.items.splice(i, 1); commit(); } }, 'spacer'] : []),
       cancel,
       { label: 'Enregistrer', primary: true, onClick: (f) => {
+        const price = f._price ? f._price() : 0;
+        if (f.buy?.checked && price) {
+          if (!purseTake(c.money, price)) { toast(`Il te manque ${fmtMoney(price - totalCopper(c.money))}`); return false; }
+          toast(`Acheté : −${fmtMoney(price)}`);
+        }
         Object.assign(it, { name: f.name.value.trim() || 'Objet', qty: Math.max(1, num(f.qty.value)), weight: num(f.weight.value), notes: f.notes.value.trim(), worn: f.worn.checked });
         if (i < 0) c.items.push(it);
         if (f.dest?.value) {
@@ -1241,6 +1285,38 @@ function editItem(i) {
         commit();
       } },
     ],
+    onOpen: (f) => { if (f.lib) f._price = wireGearPicker(f, (t) => `Acheter pour ${fmtMoney(t)} avec ma bourse (j’ai ${fmtMoney(totalCopper(c.money))})`); },
+  });
+}
+
+// Groupe : ajouter du matériel à un transport, payé ou non par la caisse
+function groupAddItemDialog(k) {
+  const g = G();
+  openDialog({
+    title: `Charger : ${k.name}`,
+    body: `<div class="fields">
+      ${gearPicker()}
+      ${F.text('name', 'Nom', '', 'full')}
+      ${F.num('qty', 'Quantité', 1)}
+      ${F.num('weight', 'Encombrement (par unité)', 1)}
+      ${F.area('notes', 'Notes', '')}
+      ${buyCheck()}
+    </div>`,
+    actions: [cancel, { label: 'Ajouter', primary: true, onClick: (f) => {
+      const name = f.name.value.trim();
+      if (!name) { toast('Choisis un objet ou donne un nom'); return false; }
+      const it = { id: R.uid(), name, qty: Math.max(1, num(f.qty.value)), weight: num(f.weight.value), notes: f.notes.value.trim() };
+      const price = f._price();
+      if (f.buy.checked && price) {
+        const prev = { group: { ...g.money }, added: { k: k.id, id: it.id } };
+        if (!purseTake(g.money, price)) { toast(`La caisse n’a pas assez (il manque ${fmtMoney(price - totalCopper(g.money))})`); return false; }
+        g.log.unshift({ id: R.uid(), date: Date.now(), label: `Achat : ${name}${it.qty > 1 ? ` ×${it.qty}` : ''}`, amount: price, sign: -1, who: '', prev });
+      }
+      k.items.push(it);
+      commitGroup();
+      toast(f.buy.checked && price ? `${name} acheté : −${fmtMoney(price)}` : `${name} chargé sur ${k.name}`);
+    } }],
+    onOpen: (f) => { f._price = wireGearPicker(f, (t) => `Payer ${fmtMoney(t)} avec la caisse (elle contient ${fmtMoney(totalCopper(g.money))})`); },
   });
 }
 
@@ -1605,6 +1681,10 @@ const A = {
     g.money = { ...e.prev.group };
     if (e.prev.char) { const ch = store.list().find((x) => x.id === e.prev.char.id); if (ch) { ch.money = { ...e.prev.char.money }; ch.updatedAt = Date.now(); store.save(); } }
     // Vente annulée : l'objet revient dans son transport
+    if (e.prev.added) {
+      const k = g.carriers.find((x) => x.id === e.prev.added.k);
+      if (k) k.items = k.items.filter((x) => x.id !== e.prev.added.id);
+    }
     if (e.prev.item) {
       const k = g.carriers.find((x) => x.id === e.prev.item.k) || g.carriers[0];
       const snap = e.prev.item.snapshot;
@@ -1616,6 +1696,7 @@ const A = {
     toast(`Annulé : ${e.label}`);
   },
   gItem(el) { const k = G().carriers.find((x) => x.id === el.dataset.k); groupItemDialog(k, +el.dataset.i); },
+  gAddItem(el) { groupAddItemDialog(G().carriers.find((x) => x.id === el.dataset.k)); },
   gSell(el) { const k = G().carriers.find((x) => x.id === el.dataset.k); groupSellDialog(k, +el.dataset.i); },
   gSaddle(el) { const k = G().carriers.find((x) => x.id === el.dataset.k); k.saddlebags = clamp((+k.saddlebags || 0) + +el.dataset.d, 0, 2); commitGroup(); },
   gEditCarrier(el) { groupCarrierDialog(G().carriers.find((x) => x.id === el.dataset.k)); },
