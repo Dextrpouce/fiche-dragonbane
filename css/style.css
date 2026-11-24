@@ -469,3 +469,8 @@ dialog#dlg > .card.wide { max-width: none; }
 @keyframes sway { 50% { transform: translateY(-3px) rotate(-8deg); } }
 .boon { color: var(--teal); font-weight: 600; }
 .cond-pill.music { background: var(--teal); }
+
+/* ---------- Combat : deux colonnes (États, PV | PVol, Armes | Armure, Repos | Dés) ---------- */
+@media (min-width: 1000px) { .grid.combat { grid-template-columns: 1fr 1fr; } }
+.lib-pick select { border-color: var(--teal); background: rgba(44, 107, 111, .08); }
+.w-stats .bad { color: var(--red); }

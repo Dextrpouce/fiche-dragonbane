@@ -1,5 +1,6 @@
 import * as R from './rules.js';
 import { store } from './store.js';
+import * as L from './library.js';
 
 // ================= Utilitaires =================
 const $app = document.getElementById('app');
@@ -296,7 +297,8 @@ function viewCombat(c) {
       <div class="w-stats">
         <span><small>Compétence</small>${esc(sk?.name || '—')} <b>${sk?.value ?? '—'}</b></span>
         <span><small>Dégâts</small><b>${esc(w.damage || '—')}${bonus ? ` + ${bonus}` : ''}</b></span>
-        ${w.range ? `<span><small>Portée</small>${esc(w.range)}</span>` : ''}
+        ${w.range ? `<span><small>Portée</small>${esc(rangeTxt(c, w.range))}</span>` : ''}
+        ${+w.strReq ? `<span class="${+c.attrs.FOR < +w.strReq ? 'bad' : ''}"><small>FOR min.</small>${w.strReq}</span>` : ''}
         ${w.durability ? `<span><small>Solidité</small>${esc(w.durability)}</span>` : ''}
         ${w.grip ? `<span><small>Prise</small>${esc(w.grip)}</span>` : ''}
       </div>
@@ -323,14 +325,6 @@ function viewCombat(c) {
 
   const esquive = c.skills.find((s) => s.id === 'esquive');
   return `<div class="grid combat">
-    ${pool('hp', 'Points de vie', c.hp.cur, hpMax, 'hp')}
-    ${pool('wp', 'Points de volonté', c.wp.cur, wpMax, 'wp')}
-    <section class="card">
-      <h2>Protection</h2>
-      <div class="armor-total"><span>Valeur d’armure</span><b>${R.armorTotal(c)}</b></div>
-      ${armorRows || `<div class="empty">Ni armure ni casque.</div><div class="add-row">${toSac('Équiper dans le Sac')}</div>`}
-    </section>
-    ${death}
     <section class="card span-all">
       <h2>États</h2>
       <div class="conds">${conds}</div>
@@ -341,11 +335,19 @@ function viewCombat(c) {
         <span class="mt-switch"><i></i></span>
       </button>
     </section>
-    <section class="card span-2">
+    ${pool('hp', 'Points de vie', c.hp.cur, hpMax, 'hp')}
+    ${pool('wp', 'Points de volonté', c.wp.cur, wpMax, 'wp')}
+    ${death}
+    <section class="card">
       <h2>Armes</h2>
       ${weapons}
       <div class="add-row">${c.weapons.length ? '' : toSac('Ajouter des armes dans le Sac')}
-      ${esquive ?`<button class="btn ghost small" data-act="skill" data-id="esquive" data-roll="1">${icon('d20')} Esquiver (${esquive.value})</button>` : ''}</div>
+      ${esquive ? `<button class="btn ghost small" data-act="skill" data-id="esquive" data-roll="1">${icon('d20')} Esquiver (${esquive.value})</button>` : ''}</div>
+    </section>
+    <section class="card">
+      <h2>Armure</h2>
+      <div class="armor-total"><span>Valeur d’armure</span><b>${R.armorTotal(c)}</b></div>
+      ${armorRows || `<div class="empty">Ni armure ni casque.</div><div class="add-row">${toSac('Équiper dans le Sac')}</div>`}
     </section>
     <section class="card">
       <h2>Repos</h2>
@@ -380,6 +382,7 @@ function viewMagie(c) {
         ${s.range ? `<span><small>Portée</small>${esc(s.range)}</span>` : ''}
         ${s.duration ? `<span><small>Durée</small>${esc(s.duration)}</span>` : ''}
         ${s.req ? `<span><small>Composantes</small>${esc(s.req)}</span>` : ''}
+        ${s.prereq ? `<span><small>Prérequis</small>${esc(s.prereq)}</span>` : ''}
         ${s.power ? '' : '<span><small>Niveau de puissance</small>non</span>'}
       </div>
       ${s.desc ? `<div class="small spell-desc">${esc(s.desc)}</div>` : ''}
@@ -428,7 +431,7 @@ function viewSac(c) {
   const weapons = c.weapons.map((w, i) => {
     const sk = c.skills.find((s) => s.id === w.skill);
     const bonus = w.bonus ? R.damageBonus(c.attrs[w.bonus]) : '';
-    const info = [sk?.name, w.grip, w.range && `portée ${w.range}`, w.durability && `solidité ${w.durability}`, w.features].filter(Boolean).join(' · ');
+    const info = [sk?.name, w.grip, w.range && `portée ${rangeTxt(c, w.range)}`, +w.strReq && `FOR ${w.strReq}`, w.durability && `solidité ${w.durability}`, w.features].filter(Boolean).join(' · ');
     return `<button class="list-item ${w.broken ? 'worn' : ''}" data-act="editWeapon" data-i="${i}">
       <span class="badge" title="Dégâts">${esc(w.damage || '—')}${bonus ? `<small>+${bonus}</small>` : ''}</span>
       <span class="li-main"><div class="li-title">${esc(w.name || 'Arme')}${w.broken ? ' <span class="tag bad">brisée</span>' : ''}</div>${info ? `<div class="li-sub">${esc(info)}</div>` : ''}</span>
@@ -574,11 +577,19 @@ const VIEWS = { fiche: viewFiche, combat: viewCombat, magie: viewMagie, sac: vie
 
 // ================= Lanceur de dés =================
 // Jet de D20 sous une valeur : avantages/désavantages, Dragon (1), Démon (20), forcer le jet.
-function openRoll({ title, target, attr = null, skill = null, weapon = null, onResult = null, note = '', noPush = false, once = false }) {
+// FOR minimale d'une arme : désavantage en dessous, inutilisable sous la moitié (renvoie null)
+function strBanes(c, w) {
+  const req = +w.strReq || 0; const str = +c.attrs.FOR || 0;
+  if (req && str * 2 < req) { toast(`${w.name} est trop lourde : FOR ${req} requise (tu as ${str})`); return null; }
+  return req && str < req ? [`FOR ${str} < ${req} requise`] : [];
+}
+
+function openRoll({ title, target, attr = null, skill = null, weapon = null, onResult = null, note = '', noPush = false, once = false, extra = [] }) {
   const c = C();
   const reasons = [];
   if (attr && c.conditions[attr]) reasons.push(`${R.ATTR[attr].cond}`);
   if (skill) R.armorBanes(c, skill).forEach((n) => reasons.push(n));
+  reasons.push(...extra);
   const boosts = c.music ? ['Musique du barde'] : [];
   const st = { boons: boosts.length ? 1 : 0, banes: reasons.length ? 1 : 0, res: null, pushed: false, dmg: null, msg: '' };
 
@@ -724,44 +735,74 @@ function creationDialog() {
 }
 
 // ================= Édition =================
+// Liste déroulante « Choisir dans la bibliothèque » : groups = [[libellé, [[valeur, texte], …]], …]
+function libPicker(groups, label = 'Bibliothèque') {
+  return `<div class="field full lib-pick"><label>${label}</label><select name="lib"><option value="">— Choisir dans la liste pour tout remplir —</option>${groups.map(([g, opts]) => `<optgroup label="${esc(g)}">${opts.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('')}</optgroup>`).join('')}</select></div>`;
+}
+const rangeTxt = (c, r) => (!r ? '' : r === 'FOR' ? `${c.attrs.FOR} m` : r === 'FOR×2' ? `${c.attrs.FOR * 2} m` : /^\d+$/.test(r) ? `${r} m` : r);
+
 function editWeapon(i) {
-  const c = C(); const w = c.weapons[i] || { name: '', skill: 'epees', damage: 'D8', bonus: 'FOR', range: '', durability: '', grip: '1 main', features: '', weight: 1, broken: false };
+  const c = C(); const w = c.weapons[i] || { name: '', skill: 'epees', damage: 'D8', bonus: 'FOR', range: '2', durability: '', grip: '1 main', features: '', strReq: 0, broken: false };
   const weaponSkills = c.skills.filter((s) => s.kind === 'arme' || s.kind === 'autre').map((s) => [s.id, `${s.name} (${s.value})`]);
+  const lib = [['Armes de contact', 'contact'], ['Armes à distance', 'distance']].map(([g, k]) => [g, L.WEAPONS.map((x, n) => [n, x]).filter(([, x]) => x.kind === k)
+    .map(([n, x]) => [n, `${x.name} — ${x.damage}${x.str ? ` · FOR ${x.str}` : ''} · ${x.cost}`])]);
   openDialog({
     title: i >= 0 ? w.name || 'Arme' : 'Nouvelle arme',
     body: `<div class="fields">
-      ${F.text('name', 'Nom', w.name, 'full', 'autofocus')}
+      ${i < 0 ? libPicker(lib) : ''}
+      ${F.text('name', 'Nom', w.name, 'full', i < 0 ? '' : 'autofocus')}
       ${F.select('skill', 'Compétence', w.skill, weaponSkills)}
       ${F.text('damage', 'Dégâts', w.damage, '', 'placeholder="2D6"')}
-      ${F.select('bonus', 'Bonus aux dégâts', w.bonus, [['FOR', 'FOR (contact)'], ['AGI', 'AGI (distance)'], ['', 'Aucun']])}
-      ${F.select('grip', 'Prise', w.grip, ['1 main', '2 mains', ''])}
-      ${F.text('range', 'Portée', w.range, '', 'placeholder="2 ou 20…"')}
+      ${F.select('bonus', 'Bonus aux dégâts', w.bonus, [['FOR', 'FOR'], ['AGI', 'AGI'], ['', 'Aucun']])}
+      ${F.num('strReq', 'FOR minimale', w.strReq || '')}
+      ${F.select('grip', 'Prise', w.grip, ['1 main', '2 mains', '—', ''])}
+      ${F.text('range', 'Portée (m)', w.range, '', 'placeholder="2, 20, FOR…"')}
       ${F.text('durability', 'Solidité', w.durability)}
-      ${F.text('features', 'Particularités', w.features, 'full', 'placeholder="Perforant, crochet, lancer…"')}
+      ${F.text('features', 'Particularités', w.features, 'full', 'placeholder="Perforante, renversement…"')}
       ${F.check('broken', 'Arme brisée', w.broken, 'full')}
-    </div>`,
+    </div>
+    <p class="small muted">FOR inférieure au minimum : désavantage à l’attaque et à la parade ; moins de la moitié : arme inutilisable.</p>`,
     actions: [
       ...(i >= 0 ? [{ label: icon('trash'), cls: 'ghost', onClick: () => { c.weapons.splice(i, 1); commit(); } }, 'spacer'] : []),
       cancel,
       { label: 'Enregistrer', primary: true, onClick: (f) => {
-        Object.assign(w, { name: f.name.value.trim() || 'Arme', skill: f.skill.value, damage: f.damage.value.trim(), bonus: f.bonus.value, grip: f.grip.value, range: f.range.value.trim(), durability: f.durability.value.trim(), features: f.features.value.trim(), broken: f.broken.checked });
+        Object.assign(w, { name: f.name.value.trim() || 'Arme', skill: f.skill.value, damage: f.damage.value.trim(), bonus: f.bonus.value, strReq: num(f.strReq.value), grip: f.grip.value, range: f.range.value.trim(), durability: f.durability.value.trim(), features: f.features.value.trim(), broken: f.broken.checked });
         if (i < 0) c.weapons.push(w);
         commit();
       } },
     ],
+    onOpen: (f) => {
+      if (!f.lib) return;
+      f.lib.onchange = () => {
+        const x = L.WEAPONS[f.lib.value];
+        if (!x) return;
+        f.name.value = x.name; f.skill.value = x.skill; f.damage.value = x.damage; f.bonus.value = x.bonus;
+        f.strReq.value = x.str || ''; f.grip.value = x.grip; f.range.value = x.range; f.durability.value = x.dur; f.features.value = x.features;
+      };
+    },
   });
 }
 
 function editSpell(i, list = 'spells') {
   const c = C(); const trick = list === 'tricks';
   const defSchool = c.school || R.MAGIC_SKILLS.find((id) => c.skills.find((s) => s.id === id)?.trained) || 'general';
-  const s = c[list][i] || { name: '', school: defSchool, rank: 1, req: '', time: 'Action', range: '', duration: '', desc: '', power: true, prepared: false };
+  const s = c[list][i] || { name: '', school: defSchool, rank: 1, prereq: '', req: '', time: 'Action', range: '', duration: '', desc: '', power: true, prepared: false };
+  // Bibliothèque : écoles connues d'abord, sorts déjà appris retirés
+  const known = new Set(c[list].map((x) => R.norm(x.name)));
+  const mine = new Set(['general', ...c.skills.filter(R.knowsMagic).map((x) => x.id)]);
+  const src = trick ? L.TRICKS : L.SPELLS;
+  const order = Object.keys(L.SCHOOL_LABEL).sort((a, b) => (mine.has(b) ? 1 : 0) - (mine.has(a) ? 1 : 0));
+  const basic = /^(Une école|Animisme|Élémentalisme|Mentalisme)/;
+  const lib = order.map((sc) => [`${L.SCHOOL_LABEL[sc]}${mine.has(sc) ? '' : ' (école non apprise)'}`, src.map((x, n) => [n, x]).filter(([, x]) => x.school === sc && !known.has(R.norm(x.name)))
+    .map(([n, x]) => [n, trick ? x.name : `${x.name} — rang ${x.rank}${x.prereq && !basic.test(x.prereq) ? ` (après ${x.prereq})` : ''}`])]).filter(([, o]) => o.length);
   openDialog({
     title: i >= 0 ? s.name : trick ? 'Nouveau tour de magie' : 'Nouveau sort',
     body: `<div class="fields">
-      ${F.text('name', 'Nom', s.name, 'full', 'autofocus')}
+      ${i < 0 && lib.length ? libPicker(lib) : ''}
+      ${F.text('name', 'Nom', s.name, 'full', i < 0 ? '' : 'autofocus')}
       ${F.select('school', 'École', s.school, schoolOpts)}
       ${trick ? '' : `${F.num('rank', 'Rang', s.rank)}
+      ${F.text('prereq', 'Prérequis', s.prereq || '')}
       ${F.text('time', 'Temps d’incantation', s.time)}
       ${F.text('range', 'Portée', s.range)}
       ${F.text('duration', 'Durée', s.duration)}
@@ -774,11 +815,20 @@ function editSpell(i, list = 'spells') {
       cancel,
       { label: 'Enregistrer', primary: true, onClick: (f) => {
         s.name = f.name.value.trim() || (trick ? 'Tour' : 'Sort'); s.school = f.school.value; s.desc = f.desc.value.trim();
-        if (!trick) Object.assign(s, { rank: num(f.rank.value) || 1, time: f.time.value.trim(), range: f.range.value.trim(), duration: f.duration.value.trim(), req: f.req.value.trim(), power: f.power.checked });
+        if (!trick) Object.assign(s, { rank: num(f.rank.value) || 1, prereq: f.prereq.value.trim(), time: f.time.value.trim(), range: f.range.value.trim(), duration: f.duration.value.trim(), req: f.req.value.trim(), power: f.power.checked });
         if (i < 0) c[list].push(s);
         commit();
       } },
     ],
+    onOpen: (f) => {
+      if (!f.lib) return;
+      f.lib.onchange = () => {
+        const x = src[f.lib.value];
+        if (!x) return;
+        f.name.value = x.name; f.school.value = x.school; f.desc.value = x.desc;
+        if (!trick) { f.rank.value = x.rank; f.prereq.value = x.prereq; f.time.value = x.time; f.range.value = x.range; f.duration.value = x.duration; f.req.value = x.req; f.power.checked = x.power; }
+      };
+    },
   });
 }
 
@@ -1120,11 +1170,14 @@ const A = {
   },
   attack(el) {
     const c = C(); const w = c.weapons[+el.dataset.i]; const s = c.skills.find((x) => x.id === w.skill);
-    openRoll({ title: `Attaque — ${w.name}`, target: s.value, attr: s.attr, skill: s, weapon: w });
+    const extra = strBanes(c, w); if (!extra) return;
+    openRoll({ title: `Attaque — ${w.name}`, target: s.value, attr: s.attr, skill: s, weapon: w, extra });
   },
   parry(el) {
     const c = C(); const w = c.weapons[+el.dataset.i]; const s = c.skills.find((x) => x.id === w.skill);
-    openRoll({ title: `Parade — ${w.name}`, target: s.value, attr: s.attr, skill: s, note: 'Si la parade réussit, l’arme encaisse les dégâts : au-delà de sa solidité, elle se brise.' });
+    if (/ne peut pas parer/i.test(w.features || '')) { toast(`${w.name} ne peut pas servir à parer`); return; }
+    const extra = strBanes(c, w); if (!extra) return;
+    openRoll({ title: `Parade — ${w.name}`, target: s.value, attr: s.attr, skill: s, extra, note: 'Si la parade réussit, l’arme encaisse les dégâts : au-delà de sa solidité, elle se brise.' });
   },
   damage(el) {
     const c = C(); const w = c.weapons[+el.dataset.i];
@@ -1134,16 +1187,21 @@ const A = {
   editWeapon(el) { editWeapon(+el.dataset.i); },
   editArmor(el) {
     const c = C(); const k = el.dataset.k; const a = c[k];
+    const opts = L.ARMORS.map((x, n) => [n, x]).filter(([, x]) => x.slot === k).map(([n, x]) => [n, `${x.name} — ${x.rating} · ${x.cost}`]);
     openDialog({
       title: k === 'armor' ? 'Armure' : 'Casque',
       body: `<div class="fields">
-        ${F.text('name', 'Nom', a.name, 'full', `autofocus placeholder="${k === 'armor' ? 'Cotte de mailles…' : 'Heaume…'}"`)}
+        ${libPicker([[k === 'armor' ? 'Armures' : 'Casques', opts]])}
+        ${F.text('name', 'Nom', a.name, 'full', `placeholder="${k === 'armor' ? 'Cotte de mailles…' : 'Heaume…'}"`)}
         ${F.num('rating', 'Valeur d’armure', a.rating)}
         ${F.text('banes', 'Désavantage sur', a.banes, 'full', `placeholder="${k === 'armor' ? 'Discrétion, Esquive' : 'Vigilance'}"`)}
       </div><p class="small muted">Sépare les compétences par des virgules : le lanceur de dés ajoutera le désavantage automatiquement.</p>`,
-      actions: [cancel, { label: 'Enregistrer', primary: true, onClick: (f) => {
-        Object.assign(a, { name: f.name.value.trim(), rating: num(f.rating.value), banes: f.banes.value.trim() }); commit();
-      } }],
+      actions: [
+        ...(a.name || a.rating ? [{ label: k === 'armor' ? 'Retirer l’armure' : 'Retirer le casque', cls: 'ghost', onClick: () => { Object.assign(a, { name: '', rating: 0, banes: '' }); commit(); } }, 'spacer'] : []),
+        cancel, { label: 'Enregistrer', primary: true, onClick: (f) => {
+          Object.assign(a, { name: f.name.value.trim(), rating: num(f.rating.value), banes: f.banes.value.trim() }); commit();
+        } }],
+      onOpen: (f) => { f.lib.onchange = () => { const x = L.ARMORS[f.lib.value]; if (!x) return; f.name.value = x.name; f.rating.value = x.rating; f.banes.value = x.banes; }; },
     });
   },
   freeRoll(el) { freeRoll(el.dataset.e); },
