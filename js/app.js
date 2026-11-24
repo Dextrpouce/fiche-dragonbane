@@ -309,6 +309,7 @@ function viewCombat(c) {
         <button class="btn small" data-act="attack" data-i="${i}" ${sk ? '' : 'disabled'}>${icon('d20')} Attaquer</button>
         <button class="btn small ghost" data-act="parry" data-i="${i}" ${sk ? '' : 'disabled'}>${icon('shield')} Parer</button>
         <button class="btn small gold" data-act="damage" data-i="${i}" ${w.damage ? '' : 'disabled'}>Dégâts</button>
+        <button class="btn small ghost" data-act="sneak" data-i="${i}" ${sk ? '' : 'disabled'} title="Attaque sournoise">🗡 Sournoise</button>
       </div>
     </div>`;
   }).join('') || '<div class="empty">Aucune arme.</div>';
@@ -662,13 +663,74 @@ function strBanes(c, w) {
   return req && str < req ? [`FOR ${str} < ${req} requise`] : [];
 }
 
-function openRoll({ title, target, attr = null, skill = null, weapon = null, onResult = null, note = '', noPush = false, once = false, extra = [] }) {
+const hasAbility = (c, name) => c.abilities.some((a) => R.norm(a.name) === R.norm(name));
+const isSubtle = (w) => /discr[eè]te/i.test(w.features || '');
+const isRanged = (w) => ['arcs', 'arbaletes', 'frondes'].includes(w.skill);
+// Un dé de plus sur le premier terme : D8 → 2D8, 2D6 → 3D6
+const addDie = (expr) => String(expr || '').replace(/^(\d*)D(\d+)/i, (m, n, f) => `${(+n || 1) + 1}D${f}`);
+
+// Boutons de dégâts d'une arme : dégâts normaux + capacités héroïques qui s'y ajoutent
+function damageOptions(c, w, sneak) {
+  const base = sneak && isSubtle(w) ? addDie(w.damage) : w.damage;
+  const bonus = w.bonus ? R.damageBonus(c.attrs[w.bonus]) : '';
+  const expr = (plus) => `${base}${plus ? `+${plus}` : ''}${bonus ? `+${bonus}` : ''}`;
+  const opts = [{ label: 'Dégâts', expr: expr() }];
+  const add = (name, plus, wp, cond = true, why = '') => { if (cond && hasAbility(c, name)) opts.push({ label: `+ ${name}${why} (+${plus}, ${wp} PVol)`, expr: expr(plus), wp, name }); };
+  add('Assassin', 'D8', 3, sneak);
+  add('Tueur de dragons', 'D8', 3, true, ' contre un monstre');
+  add('Coup puissant', 'D8', 3, w.grip === '2 mains' && !isRanged(w), ' sans t’être déplacé');
+  add('Poing de fer', 'D6', 1, w.skill === 'bagarre');
+  return opts;
+}
+
+// Attaque sournoise : Discrétion (désavantage au contact), puis attaque avec avantage, ni esquive ni parade,
+// +1 dé de dégâts avec une arme discrète. Poignarder permet de la faire en plein combat (3 PVol).
+function sneakAttack(i) {
+  const c = C(); const w = c.weapons[i]; const s = c.skills.find((x) => x.id === w.skill);
+  const extra = strBanes(c, w); if (!extra) return;
+  const stab = hasAbility(c, 'Poignarder') && isSubtle(w) && !isRanged(w);
+  const attack = () => openRoll({
+    title: `Attaque sournoise — ${w.name}`, target: s.value, attr: s.attr, skill: s, weapon: w, extra,
+    boons: ['attaque sournoise'], dmgOptions: damageOptions(c, w, true),
+    note: `La cible ne peut ni esquiver ni parer.${isSubtle(w) ? ' Arme discrète : +1 dé de dégâts.' : ''}`,
+  });
+  openDialog({
+    title: `Attaque sournoise — ${w.name}`,
+    body: `<p class="small">Approche-toi sans être vu : jet de <b>Discrétion</b>. Réussi, tu choisis ta carte d’initiative et ton attaque a un <b>avantage</b> ; la cible ne peut <b>ni esquiver ni parer</b>${isSubtle(w) ? ', et ton arme discrète fait <b>+1 dé</b> de dégâts' : ''}. Raté, la cible te repère : tirez l’initiative.</p>
+      ${stab ? `<div class="checks one">
+        <label class="check"><input type="radio" name="mode" value="sneak" checked><span>Hors combat : jet de Discrétion d’abord</span></label>
+        <label class="check"><input type="radio" name="mode" value="stab"><span><b>Poignarder</b> en plein combat (3 PVol, un allié à 2 m de la cible) : pas de jet de Discrétion</span></label>
+      </div>` : ''}
+      ${F.check('close', 'Je m’approche à 2 m pour frapper au contact (désavantage en Discrétion)', !isRanged(w))}
+      <p class="small muted">Pas pendant un combat déjà engagé${stab ? ', sauf avec Poignarder' : ''}. Toujours un seul attaquant contre une seule cible.</p>`,
+    actions: [cancel, { label: 'Commencer', primary: true, onClick: (f) => {
+      if (f.mode?.value === 'stab') {
+        if (c.wp.cur < 3) { toast('Pas assez de points de volonté pour Poignarder'); return false; }
+        c.wp.cur -= 3; commit(false); toast('Poignarder : −3 PVol');
+        setTimeout(attack);
+        return;
+      }
+      const d = c.skills.find((x) => x.id === 'discretion');
+      setTimeout(() => openRoll({
+        title: `Discrétion — approche de la cible`, target: d.value, attr: d.attr, skill: d,
+        extra: f.close.checked ? ['approche au contact'] : [],
+        next: { label: `${icon('sword')} Attaquer`, onClick: attack },
+        onResult: (r, st) => { st.msg += r.success ? ' Tu n’es pas repéré : choisis ta carte d’initiative, puis attaque.' : ' <b>Repéré !</b> La cible te remarque : tirez l’initiative.'; },
+      }));
+    } }],
+  });
+}
+
+// extra : désavantages en plus · boons : avantages en plus · dmgOptions : boutons de dégâts [{label, expr, wp, name}]
+// next : bouton proposé après une réussite ({label, onClick}) pour enchaîner un autre jet
+function openRoll({ title, target, attr = null, skill = null, weapon = null, onResult = null, note = '', noPush = false, once = false, extra = [], boons = [], dmgOptions = null, next = null }) {
   const c = C();
   const reasons = [];
   if (attr && c.conditions[attr]) reasons.push(`${R.ATTR[attr].cond}`);
   if (skill) R.armorBanes(c, skill).forEach((n) => reasons.push(n));
   reasons.push(...extra);
-  const boosts = c.music ? ['Musique du barde'] : [];
+  const boosts = [...(c.music ? ['Musique du barde'] : []), ...boons];
+  const dmgOpts = weapon ? (dmgOptions || damageOptions(c, weapon, false)) : [];
   const st = { boons: boosts.length ? 1 : 0, banes: reasons.length ? 1 : 0, res: null, pushed: false, dmg: null, msg: '' };
 
   const draw = () => {
@@ -685,7 +747,7 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
         <div class="bb-col"><span>Avantages</span><div class="step"><button data-r="boon" data-d="-1">−</button><span class="val">${st.boons}</span><button data-r="boon" data-d="1">+</button></div></div>
         <div class="bb-col"><span>Désavantages</span><div class="step"><button data-r="bane" data-d="-1">−</button><span class="val">${st.banes}</span><button data-r="bane" data-d="1">+</button></div></div>
       </div>
-      ${boosts.length ? `<p class="small center boon">♪ Avantage : ${esc(boosts.join(', '))}</p>` : ''}
+      ${boosts.length ? `<p class="small center boon">Avantage : ${esc(boosts.join(', '))}</p>` : ''}
       ${reasons.length ? `<p class="small center bad">Désavantage : ${esc(reasons.join(', '))}</p>` : ''}
       <div class="roll-zone">
         ${r ? `<div class="dice">${r.dice.map((v, i) => `<span class="die ${r.dice.length > 1 && v !== r.kept ? 'drop' : ''} ${v === 1 ? 'dragon' : v === 20 ? 'demon' : ''}" style="animation-delay:${i * 80}ms">${v}</span>`).join('')}</div>${verdict}` : `<div class="dice idle"><span class="die">${icon('d20')}</span></div>`}
@@ -695,9 +757,10 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
       ${canPush ? `<div class="push"><p class="small"><b>Forcer le jet ?</b> Relance en acceptant un état :</p><div class="conds small">${free.map((a) => `<button class="cond-chip" data-r="push" data-k="${a.key}"><b>${a.cond}</b><small>${a.key}</small></button>`).join('')}</div></div>` : ''}
       <div class="dlg-actions">
         <button class="btn ghost" data-r="close">Fermer</button><span class="spacer"></span>
-        ${weapon && r?.success ? `<button class="btn gold" data-r="dmg">Dégâts</button>` : ''}
-        ${once && r ? '' : `<button class="btn" data-r="roll">${icon('d20')} ${r ? 'Nouveau jet' : 'Lancer'}</button>`}
+        ${next && r?.success ? `<button class="btn gold" data-r="next">${next.label}</button>` : ''}
+        ${once && r ? '' : `<button class="btn ${next && r?.success ? 'ghost' : ''}" data-r="roll">${icon('d20')} ${r ? 'Nouveau jet' : 'Lancer'}</button>`}
       </div>
+      ${weapon && r?.success ? `<div class="dmg-opts">${dmgOpts.map((o, i) => `<button class="btn gold ${i ? 'small' : ''}" data-r="dmg" data-o="${i}" ${o.wp && c.wp.cur < o.wp ? 'disabled' : ''}>${esc(o.label)}</button>`).join('')}</div>` : ''}
     </div>`;
   };
   const roll = () => {
@@ -727,9 +790,15 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
       st.msg = `Jet forcé : tu es ${R.ATTR[b.dataset.k].cond.toLowerCase()}. ${st.msg}`;
     }
     if (k === 'dmg') {
-      const bonus = weapon.bonus ? R.damageBonus(c.attrs[weapon.bonus]) : '';
-      st.dmg = R.rollExpr(`${weapon.damage}${bonus ? `+${bonus}` : ''}`);
+      const o = dmgOpts[+b.dataset.o];
+      if (o.wp) {
+        if (c.wp.cur < o.wp) { toast('Pas assez de points de volonté'); return; }
+        c.wp.cur -= o.wp; commit(false);
+      }
+      st.dmg = R.rollExpr(o.expr);
+      st.msg = o.name ? `${esc(o.name)} : −${o.wp} PVol (il t’en reste ${c.wp.cur}).` : '';
     }
+    if (k === 'next') { next.onClick(); return; }
     draw();
   };
   dlg.onclose = () => { dlg.onclose = null; render(); };
@@ -1284,6 +1353,7 @@ const A = {
     freeRoll(`${w.damage}${bonus ? `+${bonus}` : ''}`);
   },
   editWeapon(el) { editWeapon(+el.dataset.i); },
+  sneak(el) { sneakAttack(+el.dataset.i); },
   editArmor(el) {
     const c = C(); const k = el.dataset.k; const a = c[k];
     const opts = L.ARMORS.map((x, n) => [n, x]).filter(([, x]) => x.slot === k).map(([n, x]) => [n, `${x.name} — ${x.rating} · ${x.cost}`]);

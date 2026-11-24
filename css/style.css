@@ -503,3 +503,7 @@ dialog#dlg > .card.wide { max-width: none; }
 .lib-body p { margin: 6px 0 0; }
 nav.tabs button span { white-space: nowrap; }
 @media (max-width: 420px) { nav.tabs button { font-size: 11.5px; } nav.tabs button svg { width: 22px; height: 22px; } }
+
+/* Boutons de dégâts (normaux + capacités) */
+.dmg-opts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.check input[type=radio] { width: 20px; height: 20px; accent-color: var(--red); flex: none; margin: 0; }
