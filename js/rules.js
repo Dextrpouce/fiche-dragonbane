@@ -145,25 +145,67 @@ export const SESSION_QUESTIONS = [
 ];
 export const WEAKNESS_OVERCOME = 'As-tu agi clairement contre ta faiblesse ? (2 coches ; la faiblesse est surmontée)';
 
-// ----- Capacités héroïques : [nom, prérequis, coût en PVol] -----
+// ----- Capacités héroïques : nom, prérequis, coût en PVol, effet résumé, utile en combat -----
+const H = (name, req, wp, combat, desc) => ({ name, req, wp, combat, desc });
 export const HEROIC = [
-  ['Ambidextre', 'Arme de contact 12', '3'], ['Assassin', 'Couteaux 12', '3'], ['Belette', 'Esquive 12', '3'],
-  ['Berserker', 'Arme de contact 12', '3'], ['Blocage au bouclier', 'Arme de contact (FOR) 12', '2'], ['Bras de lanceur', 'Arme de contact 12', '2'],
-  ['Chasseur de monstres', 'Connaissance des bêtes 12', '3'], ['Chasseur de trésors', 'Marchandage 12', '3'], ['Compagnon', 'Chasse et pêche 12', '3'],
-  ['Contorsionniste', 'Esquive 12', '1'], ['Coup double', 'Haches ou Épées 12', '3'], ['Coup puissant', 'Arme de contact (FOR) 12', '3'],
-  ['Cri de guerre', '—', '3'], ['Défensif', 'Arme de contact 12', '3'], ['Déguisement', 'Bluff 12', '2'],
-  ['Dévier les flèches', 'Arme de contact 12', '1'], ['Éclaireur', 'Survie 12', '1'], ['Félin', 'Acrobatie 12', 'Variable'],
-  ['Focalisé', '—', ''], ['Gardien', 'Haches, Marteaux ou Épées 12', '2'], ['Guérison rapide', '—', '2'],
-  ['Intendant', 'Survie 12', '1'], ['Intrépide', '—', '2'], ['Intuition', 'Mythes et légendes 12', '3'],
-  ['Jeu de jambes', 'Esquive 12', '3'], ['Loup solitaire', 'Survie 12', ''], ['Maître charpentier', 'Artisanat 12', 'Variable'],
-  ['Maître cuisinier', '—', '1'], ['Maître forgeron', 'Artisanat 12', 'Variable'], ['Maître sorcier', 'École de magie 12', '3'],
-  ['Maître tanneur', 'Artisanat 12', 'Variable'], ['Musicien', 'Représentation 12', '3'], ['Œil d’aigle', 'Vigilance 12', '2'],
-  ['Perspicacité', 'Persuasion 12', '2'], ['Pied marin', 'Natation 12', '1'], ['Poignarder', 'Couteaux 12', '3'],
-  ['Poigne de fer', 'Bagarre 12', '1'], ['Poing de fer', 'Bagarre 12', '1'], ['Rapide comme l’éclair', 'Esquive 12', '2'],
-  ['Robuste', '—', ''], ['Talent magique', '—', ''], ['Tir double', 'Arcs 12', '3'],
-  ['Tueur de dragons', 'Arme 12', '3'], ['Vétéran', 'Arme 12', '1'],
-].map(([name, req, wp]) => ({ name, req, wp }));
+  H('Ambidextre', 'Arme de contact 12', '3', true, 'Avec une arme à une main dans chaque main : une attaque supplémentaire avec la seconde, avec désavantage (FOR requise de l’arme secondaire +3).'),
+  H('Assassin', 'Couteaux 12', '3', true, 'Ton attaque sournoise fait +D8 dégâts. À activer après le jet pour toucher, avant les dégâts ; cumulable avec Poignarder.'),
+  H('Belette', 'Esquive 12', '3', true, 'Attaqué avec un autre personnage à 2 m : l’attaque le vise à ta place (avant toute esquive ou parade ; pas contre les attaques de zone).'),
+  H('Berserker', 'Arme de contact 12', '3', true, 'Tu deviens Furieux et attaques l’ennemi le plus proche jusqu’à la fin du combat ou 0 PV : avantage au contact, mais ni parade ni esquive. Épuisé ensuite.'),
+  H('Blocage au bouclier', 'Arme de contact (FOR) 12', '2', true, 'Parade au bouclier avec avantage ; permet aussi de parer les attaques physiques de monstres normalement imparables.'),
+  H('Bras de lanceur', 'Arme de contact 12', '2', true, 'Lance une arme de contact à une main jusqu’à FOR mètres ; attaque normale, l’arme tombe aux pieds de l’ennemi.'),
+  H('Chasseur de monstres', 'Connaissance des bêtes 12', '3', false, 'À une croisée des chemins, tu sais où se trouvent les ennemis les plus dangereux.'),
+  H('Chasseur de trésors', 'Marchandage 12', '3', false, 'À une croisée des chemins, tu sais où se trouvent les plus grands trésors.'),
+  H('Compagnon', 'Chasse et pêche 12', '3', true, 'Un intervalle pour faire d’un animal ton compagnon (un seul à la fois) ; il éclaire pour toi. +3 PVol pour lui ordonner d’attaquer.'),
+  H('Contorsionniste', 'Esquive 12', '1', false, 'Tu te libères de liens ou te faufiles dans un passage étroit sans jet.'),
+  H('Coup double', 'Haches ou Épées 12', '3', true, 'Arme tranchante : un seul jet pour frapper deux ennemis à 2 m ; dégâts lancés séparément.'),
+  H('Coup puissant', 'Arme de contact (FOR) 12', '3', true, 'Arme à deux mains : +D8 dégâts, mais pas de déplacement ce round. Après le jet pour toucher, si tu n’as pas bougé.'),
+  H('Cri de guerre', '—', '3', true, 'Action en combat : tous les autres personnages qui t’entendent guérissent un état de leur choix.'),
+  H('Défensif', 'Arme de contact 12', '3', true, 'Une parade de plus sans utiliser ton action, à tout moment du round ; répétable tant que tu as des PVol.'),
+  H('Déguisement', 'Bluff 12', '2', false, 'Après un intervalle, tu prends l’apparence d’une personne de ton peuple ; un proche à 10 m peut te démasquer (Vigilance).'),
+  H('Dévier les flèches', 'Arme de contact 12', '1', true, 'Tu peux parer une attaque à distance avec une arme de contact, sans bouclier.'),
+  H('Éclaireur', 'Survie 12', '1', false, 'Avantage en Survie pour trouver ton chemin en pleine nature.'),
+  H('Félin', 'Acrobatie 12', 'Variable', false, 'Chaque PVol dépensé retire un D6 aux dégâts de chute ; activable après le jet d’Acrobatie.'),
+  H('Focalisé', '—', '', false, 'PVol maximum +2, définitivement. Cumulable.'),
+  H('Gardien', 'Haches, Marteaux ou Épées 12', '2', true, 'Un ennemi à 2 m de toi et d’un allié attaque l’allié : il doit t’attaquer toi. Hors de ton tour, sans action.'),
+  H('Guérison rapide', '—', '2', false, '+D6 PV pendant un repos court.'),
+  H('Intendant', 'Survie 12', '1', false, 'Tu réussis toujours à monter le camp en voyage.'),
+  H('Intrépide', '—', '2', true, 'Tu résistes automatiquement à la peur, sans jet de VOL.'),
+  H('Intuition', 'Mythes et légendes 12', '3', false, 'Face à une décision difficile, pose une question au MJ et reçois une réponse utile.'),
+  H('Jeu de jambes', 'Esquive 12', '3', true, 'Une esquive de plus sans utiliser ton action, à tout moment du round ; répétable tant que tu as des PVol.'),
+  H('Loup solitaire', 'Survie 12', '', false, 'Repos long en pleine nature sans jet de Survie pour le camp (pour toi seul).'),
+  H('Maître charpentier', 'Artisanat 12', 'Variable', false, 'D12 dégâts par PVol à une porte ou un objet (armure ignorée) ; fabrique en un quart un objet en bois (PVol = prix en or).'),
+  H('Maître cuisinier', '—', '1', false, 'Tu réussis la cuisine sans jet de Survie.'),
+  H('Maître forgeron', 'Artisanat 12', 'Variable', false, 'Aiguise une arme (3 PVol : l’armure adverse compte un cran de moins) ; forge en un quart une arme ou armure métallique (PVol = prix en or).'),
+  H('Maître sorcier', 'École de magie 12', '3', true, 'En combat, lance deux sorts différents en une seule action.'),
+  H('Maître tanneur', 'Artisanat 12', 'Variable', false, 'Fabrique une armure de cuir avec la peau d’une bête (moitié de son armure, 1 au moins) ; PVol = valeur d’armure.'),
+  H('Musicien', 'Représentation 12', '3', true, 'Action : avantage à tous les jets des alliés à 10 m, ou désavantage aux ennemis, jusqu’à ton tour suivant. Un instrument réduit le coût ou augmente la portée.'),
+  H('Œil d’aigle', 'Vigilance 12', '2', true, 'Vois en détail jusqu’à 200 m pendant un intervalle ; tir au-delà de la portée sans désavantage (par cible).'),
+  H('Perspicacité', 'Persuasion 12', '2', false, 'Après une conversation, jet de Vigilance pour savoir si la personne dit la vérité.'),
+  H('Pied marin', 'Natation 12', '1', false, 'Pendant un round dans l’eau, tu ignores tous ses effets négatifs, noyade comprise.'),
+  H('Poignarder', 'Couteaux 12', '3', true, 'Attaque au contact avec une arme discrète sur un ennemi à 2 m d’un allié : attaque sournoise (ni esquive ni parade, avantage, +1 dé de dégâts). Sans action.'),
+  H('Poigne de fer', 'Bagarre 12', '1', true, 'Avantage en Bagarre pour agripper ou empêcher l’ennemi de se libérer.'),
+  H('Poing de fer', 'Bagarre 12', '1', true, 'Attaque à mains nues : +D6 dégâts, à activer après le jet.'),
+  H('Rapide comme l’éclair', 'Esquive 12', '2', true, 'À l’initiative, pioche deux cartes et garde celle de ton choix (une fois par round).'),
+  H('Robuste', '—', '', false, 'PV maximum +2, définitivement. Cumulable.'),
+  H('Talent magique', '—', '', false, 'Tu peux apprendre une nouvelle école de magie (les sorts s’apprennent à part).'),
+  H('Tir double', 'Arcs 12', '3', true, 'À l’arc (pas l’arbalète) : deux flèches, un seul jet avec désavantage, dégâts séparés.'),
+  H('Tueur de dragons', 'Arme 12', '3', true, 'Contre un monstre : +D8 dégâts, après le jet pour toucher.'),
+  H('Vétéran', 'Arme 12', '1', true, 'Au début du round, garde ta carte d’initiative du round précédent. Sans action.'),
+];
+// Capacités innées des peuples (pour l'effet et le repère combat)
+export const KIN_ABILITIES = [
+  H('Adaptable', 'Humain', '3', true, 'Fais un jet avec une autre compétence que celle demandée, si tu peux justifier comment.'),
+  H('Insaisissable', 'Halfelin', '3', true, 'Avantage à ton jet d’Esquive.'),
+  H('Rancunier', 'Nain', '3', true, 'Avantage pour attaquer quelqu’un qui t’a déjà blessé.'),
+  H('Paix intérieure', 'Elfe', '', false, 'Méditation pendant un repos court : +D6 PV, +D6 PVol et un état de plus guéri (tu ne peux pas être réveillé).'),
+  H('Colérique', 'Canardin', '', true, 'Avantage à un jet (sauf INT et compétences d’INT), mais tu deviens Furieux.'),
+  H('Pattes palmées', 'Canardin', '', false, 'Avantage en Natation ; pleine vitesse dans et sous l’eau.'),
+  H('Instinct de chasseur', 'Homme-loup', '3', true, 'Désigne une proie (action) et suis sa piste un jour ; 1 PVol de plus pour un avantage à une attaque contre elle.'),
+];
 export const findHeroic = (name) => HEROIC.find((h) => norm(h.name) === norm(name)) || null;
+// Effet et repère combat d'une capacité du personnage (capacité héroïque ou innée)
+export const abilityInfo = (name) => findHeroic(name) || KIN_ABILITIES.find((h) => norm(h.name) === norm(name)) || null;
 // Capacités qui augmentent un maximum (+2, cumulables)
 export const POOL_ABILITIES = { robuste: 'hp', focalise: 'wp' };
 
@@ -187,8 +229,8 @@ export function newCharacter({ name = '', kin = 'humain', profession = 'guerrier
   }));
   const pa = PROF[profession]?.ability;
   const abilities = [
-    ...(KIN[kin]?.abilities || []).map(([n, wp]) => ({ id: uid(), name: n, wp, desc: '', source: 'Peuple' })),
-    ...(pa ? [{ id: uid(), name: pa, wp: findHeroic(pa)?.wp || '', req: findHeroic(pa)?.req || '', desc: '', source: 'Profession' }] : []),
+    ...(KIN[kin]?.abilities || []).map(([n, wp]) => ({ id: uid(), name: n, wp, desc: abilityInfo(n)?.desc || '', source: 'Peuple' })),
+    ...(pa ? [{ id: uid(), name: pa, wp: findHeroic(pa)?.wp || '', req: findHeroic(pa)?.req || '', desc: findHeroic(pa)?.desc || '', source: 'Profession' }] : []),
   ];
   return upgradeCharacter({
     id: uid(), name, kin, kinName: '', profession, professionName: '', school, age,

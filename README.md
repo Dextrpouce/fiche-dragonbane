@@ -10,6 +10,8 @@ Application pour téléphone, tablette et PC qui gère ton personnage de **Drago
 - **Sac** : armes à portée de main (3 au plus), armure et casque (avec les compétences gênées), bourse (or, argent, cuivre, avec rendu de monnaie), encombrement (FOR ÷ 2 + sac à dos), équipement, objets minuscules, souvenir.
 - **Progrès** : questions de fin de séance, coches d'amélioration, **jets d'amélioration** automatiques (D20 > niveau = +1, maximum 18), nouvelle capacité héroïque à 18, historique avec annulation.
 - **Bibliothèque intégrée** : en ajoutant une arme, une armure, un casque, un sort ou un tour de magie, choisis-le dans la liste pour tout remplir d'un coup (35 armes, 6 armures et casques, 49 sorts, 17 tours). Les noms sont traduits librement et les effets résumés : le livre fait foi. La FOR minimale des armes est appliquée (désavantage en dessous, arme inutilisable sous la moitié).
+- **Biblio** : consultation des armes, armures, sorts, tours de magie et capacités (héroïques et innées), avec recherche.
+- **Capacités de combat** (onglet Combat) : tes capacités utiles en combat (Assassin, Poignarder, Berserker…) avec leur effet et un bouton qui dépense les PVol (Berserker et Colérique te rendent Furieux).
 - **Carnet** : identité, faiblesse, apparence, souvenir, compagnons, notes.
 - **Trois modes** (bouton en haut) : **Jeu** (toucher = jet de dé), **Progression** (placer les coches et améliorer), **Libre** (saisir ou corriger sans contrainte).
 - Plusieurs personnages, export/import en fichier JSON.

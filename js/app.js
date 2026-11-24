@@ -35,6 +35,7 @@ const ICONS = {
   moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
   flame: '<path d="M12 21c-4 0-6.5-2.6-6.5-6.2 0-3.9 3.4-5.6 3.7-9.8 2.3 1.4 3.6 3.5 3.8 5.6.9-.8 1.5-2 1.6-3.3 2.4 2 3.9 4.7 3.9 7.5 0 3.6-2.5 6.2-6.5 6.2z"/>',
   bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+  library: '<path d="M4 4h3v16H4zM9 4h3v16H9z"/><path d="M14.5 5.2l2.9-.8 3.6 14.6-2.9.7z"/>',
   coin: '<circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10.5c0-1 1-1.6 2.5-1.6s2.5.7 2.5 1.6c0 2.2-5 1-5 3.2 0 1 1.1 1.6 2.5 1.6s2.5-.6 2.5-1.6"/>',
 };
 const icon = (n) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
@@ -69,7 +70,7 @@ const MODES = {
 
 const TABS = [
   ['fiche', 'Fiche', 'sheet'], ['combat', 'Combat', 'sword'], ['magie', 'Magie', 'wand'], ['sac', 'Sac', 'bag'],
-  ['prog', 'Progrès', 'up'], ['carnet', 'Carnet', 'book'],
+  ['prog', 'Progrès', 'up'], ['carnet', 'Carnet', 'book'], ['biblio', 'Biblio', 'library'],
 ];
 
 // ================= Champs de formulaire =================
@@ -166,6 +167,7 @@ function render() {
     <nav class="tabs">${TABS.filter(([k]) => k !== 'magie' || R.isCaster(c)).map(([k, l, i]) => `<button class="${ui.tab === k ? 'active' : ''}" data-act="tab" data-tab="${k}">${icon(i)}<span>${l}</span></button>`).join('')}</nav>
   </div>`;
   window.scrollTo(0, y);
+  if (ui.tab === 'biblio' && ui.libSearch) filterLib();
 }
 
 function topbar(c) {
@@ -219,7 +221,7 @@ function viewFiche(c) {
 
   const abilities = c.abilities.map((a, i) => `<button class="list-item" data-act="ability" data-i="${i}">
       <span class="badge ${a.wp ? '' : 'soft'}" title="Coût en points de Volonté">${a.wp ? `${esc(a.wp)}` : '—'}</span>
-      <span class="li-main"><div class="li-title">${esc(a.name)}${a.source ? ` <span class="tag">${esc(a.source)}</span>` : ''}</div>${a.desc ? `<div class="li-sub">${esc(a.desc)}</div>` : ''}</span>
+      <span class="li-main"><div class="li-title">${esc(a.name)}${a.source ? ` <span class="tag">${esc(a.source)}</span>` : ''}</div>${abilityDesc(a) ? `<div class="li-sub">${esc(abilityDesc(a))}</div>` : ''}</span>
     </button>`).join('') || '<div class="empty">Aucune capacité.</div>';
 
   return `${vitals(c)}
@@ -349,6 +351,7 @@ function viewCombat(c) {
       <div class="armor-total"><span>Valeur d’armure</span><b>${R.armorTotal(c)}</b></div>
       ${armorRows || `<div class="empty">Ni armure ni casque.</div><div class="add-row">${toSac('Équiper dans le Sac')}</div>`}
     </section>
+    ${combatAbilities(c)}
     <section class="card">
       <h2>Repos</h2>
       <div class="rests">
@@ -363,6 +366,81 @@ function viewCombat(c) {
         <button class="die-btn wide" data-act="freeRoll" data-e="">Autre…</button></div>
     </section>
   </div>`;
+}
+
+// Capacités utiles en combat (repère de la bibliothèque ; les capacités inconnues avec un coût sont gardées)
+function combatAbilities(c) {
+  const list = c.abilities.map((a, i) => ({ a, i, info: R.abilityInfo(a.name) }))
+    .filter(({ a, info }) => (info ? info.combat : parseInt(a.wp, 10) > 0));
+  if (!list.length) return '';
+  return `<section class="card span-all">
+    <h2>Capacités de combat</h2>
+    <div class="cab-list">${list.map(({ a, i }) => {
+      const cost = parseInt(a.wp, 10);
+      const variable = /variable/i.test(a.wp || '');
+      const can = !cost || c.wp.cur >= cost;
+      return `<div class="cab">
+        <div class="cab-main" data-act="ability" data-i="${i}"><b>${esc(a.name)}</b><small>${esc(abilityDesc(a))}</small></div>
+        ${cost || variable ? `<button class="btn small ${can ? '' : 'ghost'}" data-act="useAbility" data-i="${i}" ${can ? '' : 'disabled'}>${cost ? `${cost} PVol` : 'PVol…'}</button>` : '<span class="tag">passive</span>'}
+      </div>`;
+    }).join('')}</div>
+    <p class="small muted hint">Le bouton dépense les PVol (tu en as ${c.wp.cur}). Touche le nom pour le détail.</p>
+  </section>`;
+}
+
+// ---------- Bibliothèque (consultation) ----------
+const LIB_SECTIONS = [['armes', 'Armes'], ['armures', 'Armures'], ['sorts', 'Sorts'], ['tours', 'Tours'], ['capacites', 'Capacités']];
+function viewBiblio() {
+  const sec = ui.libSection || 'armes';
+  const row = (title, meta, body, search) => `<details class="lib-item" data-search="${esc(R.norm(search))}">
+      <summary><b>${esc(title)}</b><span class="lib-meta">${meta}</span></summary>
+      <div class="lib-body">${body}</div>
+    </details>`;
+  const stats = (pairs) => `<div class="w-stats">${pairs.filter(([, v]) => v !== '' && v != null).map(([k, v]) => `<span><small>${k}</small>${esc(v)}</span>`).join('')}</div>`;
+  let content = '';
+  if (sec === 'armes') {
+    content = [['Armes de contact', 'contact'], ['Armes à distance', 'distance']].map(([g, k]) => `<h3>${g}</h3>${L.WEAPONS.filter((w) => w.kind === k).map((w) => row(w.name, `${esc(w.damage)} · ${esc(R.SKILL[w.skill]?.name || '')}`,
+      `${stats([['Compétence', R.SKILL[w.skill]?.name], ['Dégâts', w.damage], ['Bonus', w.bonus || 'aucun'], ['FOR min.', w.str || '—'], ['Prise', w.grip], ['Portée', w.range === 'FOR' ? 'FOR m' : w.range === 'FOR×2' ? 'FOR×2 m' : `${w.range} m`], ['Solidité', w.dur || '—'], ['Prix', w.cost]])}<p class="small">${esc(w.features)}</p>`,
+      `${w.name} ${w.features} ${R.SKILL[w.skill]?.name}`)).join('')}`).join('');
+  }
+  if (sec === 'armures') {
+    content = [['Armures', 'armor'], ['Casques', 'helmet']].map(([g, k]) => `<h3>${g}</h3>${L.ARMORS.filter((a) => a.slot === k).map((a) => row(a.name, `Armure ${a.rating} · ${esc(a.cost)}`,
+      `${stats([['Valeur', a.rating], ['Prix', a.cost]])}<p class="small">${a.banes ? `Désavantage : ${esc(a.banes)}` : 'Aucun désavantage.'}</p>`, `${a.name} ${a.banes}`)).join('')}`).join('');
+  }
+  if (sec === 'sorts' || sec === 'tours') {
+    const src = sec === 'sorts' ? L.SPELLS : L.TRICKS;
+    content = Object.entries(L.SCHOOL_LABEL).map(([k, g]) => {
+      const items = src.filter((s) => s.school === k).sort((a, b) => (a.rank || 0) - (b.rank || 0));
+      if (!items.length) return '';
+      return `<h3>${g}</h3>${items.map((s) => sec === 'tours'
+        ? row(s.name, '1 PVol', `<p class="small">${esc(s.desc)}</p>`, `${s.name} ${s.desc}`)
+        : row(s.name, `Rang ${s.rank}`, `${stats([['Prérequis', s.prereq], ['Composantes', s.req], ['Incantation', s.time], ['Portée', s.range], ['Durée', s.duration]])}<p class="small">${esc(s.desc)}</p>`, `${s.name} ${s.desc} ${s.prereq}`)).join('')}`;
+    }).join('');
+  }
+  if (sec === 'capacites') {
+    content = `<h3>Capacités héroïques</h3>${R.HEROIC.map((h) => row(h.name, `${h.wp ? `${esc(h.wp)} PVol` : 'passive'}${h.combat ? ' · combat' : ''}`,
+      `${stats([['Prérequis', h.req], ['Coût', h.wp ? `${h.wp} PVol` : '—']])}<p class="small">${esc(h.desc)}</p>`, `${h.name} ${h.desc} ${h.req}`)).join('')}
+      <h3>Capacités innées des peuples</h3>${R.KIN_ABILITIES.map((h) => row(h.name, esc(h.req), `${stats([['Peuple', h.req], ['Coût', h.wp ? `${h.wp} PVol` : '—']])}<p class="small">${esc(h.desc)}</p>`, `${h.name} ${h.desc} ${h.req}`)).join('')}`;
+  }
+  return `<section class="card biblio">
+    <h2>Bibliothèque</h2>
+    <div class="filters">${LIB_SECTIONS.map(([k, l]) => `<button class="chip ${sec === k ? 'on' : ''}" data-act="libSection" data-s="${k}">${l}</button>`).join('')}</div>
+    <input class="lib-search" id="libSearch" type="search" placeholder="Rechercher…" value="${esc(ui.libSearch || '')}">
+    <div class="lib-list">${content}</div>
+    <p class="empty lib-none" hidden>Rien ne correspond.</p>
+    <p class="small muted hint">Noms traduits librement, effets résumés : le livre fait foi. Pour équiper ou apprendre, utilise le Sac ou la Magie.</p>
+  </section>`;
+}
+// Filtre la liste sans tout redessiner (garde le clavier ouvert)
+function filterLib() {
+  const q = R.norm(ui.libSearch || '');
+  let shown = 0;
+  document.querySelectorAll('.lib-list h3').forEach((h) => {
+    let el = h.nextElementSibling; let any = false;
+    while (el && el.tagName !== 'H3') { const ok = !q || el.dataset.search.includes(q); el.hidden = !ok; if (ok) { any = true; shown++; } el = el.nextElementSibling; }
+    h.hidden = !any;
+  });
+  const none = document.querySelector('.lib-none'); if (none) none.hidden = shown > 0;
 }
 
 // ---------- Magie ----------
@@ -573,7 +651,7 @@ function viewCarnet(c) {
   </div>`;
 }
 
-const VIEWS = { fiche: viewFiche, combat: viewCombat, magie: viewMagie, sac: viewSac, prog: viewProg, carnet: viewCarnet };
+const VIEWS = { fiche: viewFiche, combat: viewCombat, magie: viewMagie, sac: viewSac, prog: viewProg, carnet: viewCarnet, biblio: viewBiblio };
 
 // ================= Lanceur de dés =================
 // Jet de D20 sous une valeur : avantages/désavantages, Dragon (1), Démon (20), forcer le jet.
@@ -900,19 +978,34 @@ function editAbility(i) {
   });
 }
 
+// Effet d'une capacité : celui saisi sur la fiche, sinon le résumé de la bibliothèque
+const abilityDesc = (a) => a.desc || R.abilityInfo(a.name)?.desc || '';
+
 function showAbility(i) {
   const c = C(); const a = c.abilities[i];
   const cost = parseInt(a.wp, 10);
+  const variable = /variable/i.test(a.wp || '');
+  const desc = abilityDesc(a);
   openDialog({
     title: a.name,
     body: `${a.source || a.req ? `<p class="small muted">${[a.source, a.req && `Prérequis : ${a.req}`].filter(Boolean).map(esc).join(' · ')}</p>` : ''}
-      <p>${esc(a.desc) || '<i class="muted">Pas de description. Passe en mode libre pour la compléter.</i>'}</p>
-      ${cost ? `<p class="small">Coût : <b>${cost} PVol</b> · tu en as ${c.wp.cur}.</p>` : ''}`,
-    actions: [closeBtn, ...(cost ? [{ label: `Utiliser (−${cost} PVol)`, primary: true, onClick: () => {
-      if (c.wp.cur < cost) { toast('Pas assez de points de volonté'); return false; }
-      c.wp.cur -= cost; commit(); toast(`${a.name} : −${cost} PVol`);
-    } }] : [])],
+      <p>${esc(desc) || '<i class="muted">Pas de description. Passe en mode libre pour la compléter.</i>'}</p>
+      ${cost ? `<p class="small">Coût : <b>${cost} PVol</b> · tu en as ${c.wp.cur}.</p>` : ''}
+      ${variable ? `<div class="fields">${F.num('wpv', `PVol à dépenser (tu en as ${c.wp.cur})`, 1, 'full')}</div>` : ''}`,
+    actions: [closeBtn, ...(cost || variable ? [{ label: cost ? `Utiliser (−${cost} PVol)` : 'Utiliser', primary: true, onClick: (f) => useAbility(c, a, cost || num(f.wpv?.value)) }] : [])],
   });
+}
+
+// Dépense les PVol d'une capacité ; Berserker et Colérique rendent Furieux
+function useAbility(c, a, cost) {
+  if (!cost || cost < 0) { toast('Indique le nombre de PVol'); return false; }
+  if (c.wp.cur < cost) { toast(`Pas assez de points de volonté (${c.wp.cur}/${cost})`); return false; }
+  c.wp.cur -= cost;
+  let extra = '';
+  if (['berserker', 'colerique'].includes(R.norm(a.name)) && !c.conditions.INT) { c.conditions.INT = true; extra = ' · tu es Furieux'; }
+  commit();
+  toast(`${a.name} : −${cost} PVol${extra}`);
+  return true;
 }
 
 function editSkill(s) {
@@ -1091,6 +1184,12 @@ const A = {
   },
   addAbility() { editAbility(-1); },
   ability(el) { const i = +el.dataset.i; if (isFree()) editAbility(i); else showAbility(i); },
+  useAbility(el) {
+    const c = C(); const a = c.abilities[+el.dataset.i];
+    const cost = parseInt(a.wp, 10);
+    if (cost) useAbility(c, a, cost); else showAbility(+el.dataset.i);
+  },
+  libSection(el) { ui.libSection = el.dataset.s; render(); },
 
   // ----- Combat -----
   pool(el) {
@@ -1358,6 +1457,7 @@ $app.addEventListener('click', (e) => {
 // Champs liés : enregistrement à la frappe, rafraîchissement à la validation
 $app.addEventListener('input', (e) => {
   const el = e.target;
+  if (el.id === 'libSearch') { ui.libSearch = el.value; filterLib(); return; }
   if (!el.dataset.bind) return;
   setPath(C(), el.dataset.bind, el.hasAttribute('data-num') ? num(el.value) : el.value);
   commit(false);
