@@ -474,3 +474,8 @@ dialog#dlg > .card.wide { max-width: none; }
 @media (min-width: 1000px) { .grid.combat { grid-template-columns: 1fr 1fr; } }
 .lib-pick select { border-color: var(--teal); background: rgba(44, 107, 111, .08); }
 .w-stats .bad { color: var(--red); }
+
+/* Listes déroulantes : options lisibles (le thème sombre de la page donnait du noir sur noir) */
+.card select { color-scheme: light; }
+.card select option, .card select optgroup { background: #f5eddb; color: #241a13; }
+.card select optgroup { font-style: normal; font-weight: 700; color: #b3302a; }
