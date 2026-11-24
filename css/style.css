@@ -446,19 +446,10 @@ dialog#dlg > .card.wide { max-width: none; }
 .pool .big { font-size: 56px; }
 @media (min-width: 1000px) { .grid.fiche { grid-template-columns: 2fr 1fr; } }
 
-/* ---------- Vrais dés ---------- */
-.dice-mode { display: flex; justify-content: center; margin: -4px 0 10px; }
-.dice-mode button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border: 1px solid var(--line); background: rgba(255, 255, 255, .3); font-size: 15px; color: var(--ink); }
-.dice-mode button:first-child { border-radius: 999px 0 0 999px; }
-.dice-mode button:last-child { border-radius: 0 999px 999px 0; border-left: 0; }
-.dice-mode button.on { background: var(--teal); border-color: var(--teal); color: #f2f8f6; }
-.manual { border-top: 1px dashed var(--line); margin-top: 8px; padding-top: 6px; }
-.manual-row { display: flex; gap: 8px; justify-content: center; margin-top: 8px; }
-.manual-row input { width: 110px; font-family: var(--font-body); font-weight: 700; font-size: 26px; padding: 4px; }
-.manual-row .btn.small { flex: 1; max-width: 160px; }
-.btn.demon-btn { background: linear-gradient(#5a1a16, #1d0907); border-color: #000; color: #f6cfc8; box-shadow: 0 2px 0 #000; }
-label.adv { grid-template-columns: 1fr 70px 40px; }
-label.adv input { font-weight: 700; font-size: 18px; padding: 4px; }
-label.adv b { color: var(--ink-soft); }
-.roll-zone.compact { min-height: 0; }
 .badge small { font-size: 12px; margin-left: 2px; opacity: .85; }
+
+/* ---------- Coche d'amélioration à la main ---------- */
+.skill { grid-template-columns: 12px 1fr 34px 34px 40px; }
+.skill .smark { align-self: stretch; display: grid; place-items: center; margin: -6px -4px -6px 0; font-size: 22px; color: #b8862c; border-radius: 8px; cursor: pointer; }
+.skill .smark.on { color: var(--gold); }
+.skill .smark:active { background: rgba(201, 149, 47, .2); }

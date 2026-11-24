@@ -260,7 +260,7 @@ function skillRow(c, s) {
     <span class="sn">${esc(s.name)}${banes.length ? ` <small class="bane" title="Désavantage : ${esc(banes.join(', '))}">▼</small>` : ''}</span>
     <span class="sa ${cond ? 'cond' : ''}" title="${cond ? `${R.ATTR[s.attr].cond} : désavantage` : ''}">${s.attr}</span>
     <span class="sv ${max ? 'max' : ''}">${s.value}</span>
-    <span class="smark">${s.mark ? '✦' : isProg() ? '<i class="empty-mark"></i>' : ''}</span>
+    ${max && !s.mark ? '<span class="smark"></span>' : `<span class="smark ${s.mark ? 'on' : ''}" data-act="markSkill" data-id="${s.id}" title="${s.mark ? 'Cochée pour l’amélioration' : 'Cocher après un Dragon ou un Démon'}">${s.mark ? '✦' : '✧'}</span>`}
   </button>`;
 }
 
@@ -569,44 +569,21 @@ const VIEWS = { fiche: viewFiche, combat: viewCombat, magie: viewMagie, sac: vie
 
 // ================= Lanceur de dés =================
 // Jet de D20 sous une valeur : avantages/désavantages, Dragon (1), Démon (20), forcer le jet.
-// Deux façons de jouer : l'appli lance le dé, ou tu lances tes vrais dés et tu entres le résultat.
-const realDice = () => localStorage.getItem('dragonbane.realDice') === '1';
-const setRealDice = (on) => localStorage.setItem('dragonbane.realDice', on ? '1' : '0');
-
-// Résultat d'un vrai dé : même forme que R.rollD20
-function manualResult(v, target, boons, banes) {
-  const dragon = v === 1; const demon = v === 20;
-  return { dice: [v], kept: v, net: boons - banes, dragon, demon, success: dragon || (!demon && v <= target), target, manual: true };
-}
-
 function openRoll({ title, target, attr = null, skill = null, weapon = null, onResult = null, note = '', noPush = false, once = false }) {
   const c = C();
   const reasons = [];
   if (attr && c.conditions[attr]) reasons.push(`${R.ATTR[attr].cond}`);
   if (skill) R.armorBanes(c, skill).forEach((n) => reasons.push(n));
-  const st = { boons: 0, banes: reasons.length ? 1 : 0, res: null, pushed: false, awaitPush: null, dmg: null, msg: '' };
-  const dmgExpr = () => {
-    if (!weapon) return '';
-    const bonus = weapon.bonus ? R.damageBonus(c.attrs[weapon.bonus]) : '';
-    return `${weapon.damage}${bonus ? `+${bonus}` : ''}`;
-  };
+  const st = { boons: 0, banes: reasons.length ? 1 : 0, res: null, pushed: false, dmg: null, msg: '' };
 
   const draw = () => {
     const r = st.res;
-    const real = realDice();
     const free = R.ATTRS.filter((a) => !c.conditions[a.key]);
     const canPush = !noPush && r && !r.success && !r.demon && !st.pushed && free.length;
-    const net = st.boons - st.banes;
     const verdict = !r ? '' : r.dragon ? '<div class="verdict dragon">Dragon !</div>' : r.demon ? '<div class="verdict demon">Démon !</div>'
       : r.success ? '<div class="verdict ok">Réussite</div>' : '<div class="verdict ko">Échec</div>';
-    const showEntry = real && (!r || !once);
-    const howTo = net > 0 ? 'Lance <b>2 D20</b> et garde le <b>plus petit</b>.' : net < 0 ? 'Lance <b>2 D20</b> et garde le <b>plus grand</b>.' : 'Lance <b>1 D20</b>.';
     dlg.innerHTML = `<div class="card roll">
       <h2>${esc(title)}</h2>
-      <div class="dice-mode">
-        <button class="${real ? '' : 'on'}" data-r="mode" data-v="0">${icon('d20')} Dés de l’appli</button>
-        <button class="${real ? 'on' : ''}" data-r="mode" data-v="1">✋ Mes dés</button>
-      </div>
       <div class="roll-target">Réussite sur <b>${target}</b> ou moins</div>
       ${note ? `<p class="small muted center">${note}</p>` : ''}
       <div class="bb">
@@ -614,73 +591,49 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
         <div class="bb-col"><span>Désavantages</span><div class="step"><button data-r="bane" data-d="-1">−</button><span class="val">${st.banes}</span><button data-r="bane" data-d="1">+</button></div></div>
       </div>
       ${reasons.length ? `<p class="small center bad">Désavantage : ${esc(reasons.join(', '))}</p>` : ''}
-      <div class="roll-zone ${real && !r ? 'compact' : ''}">
-        ${r ? `<div class="dice">${r.dice.map((v, i) => `<span class="die ${r.dice.length > 1 && v !== r.kept ? 'drop' : ''} ${v === 1 ? 'dragon' : v === 20 ? 'demon' : ''}" style="animation-delay:${i * 80}ms">${v}</span>`).join('')}</div>${verdict}`
-          : real ? '' : `<div class="dice idle"><span class="die">${icon('d20')}</span></div>`}
+      <div class="roll-zone">
+        ${r ? `<div class="dice">${r.dice.map((v, i) => `<span class="die ${r.dice.length > 1 && v !== r.kept ? 'drop' : ''} ${v === 1 ? 'dragon' : v === 20 ? 'demon' : ''}" style="animation-delay:${i * 80}ms">${v}</span>`).join('')}</div>${verdict}` : `<div class="dice idle"><span class="die">${icon('d20')}</span></div>`}
         ${st.msg ? `<p class="small center">${st.msg}</p>` : ''}
         ${st.dmg ? `<div class="dmg"><span>Dégâts</span><b>${st.dmg.total}</b><small>${esc(st.dmg.detail)}</small></div>` : ''}
-        ${weapon && r?.success && real ? `<p class="center">Dégâts à lancer : <b>${esc(dmgExpr().replace(/\+/g, ' + '))}</b></p>` : ''}
       </div>
-      ${showEntry ? `<div class="manual">
-        <p class="small center">${st.awaitPush ? '<b>Jet forcé :</b> relance tes dés. ' : r ? 'Nouveau jet : ' : ''}${howTo}</p>
-        <div class="manual-row">
-          <input type="number" inputmode="numeric" min="1" max="20" id="manualVal" placeholder="Résultat">
-          <button class="btn" data-r="manual">Valider</button>
-        </div>
-        <div class="manual-row">
-          <button class="btn gold small" data-r="manual" data-v="1">Dragon (1)</button>
-          <button class="btn small demon-btn" data-r="manual" data-v="20">Démon (20)</button>
-        </div>
-      </div>` : ''}
-      ${canPush ? `<div class="push"><p class="small"><b>Forcer le jet ?</b> ${real ? 'Choisis l’état que tu acceptes, puis relance tes dés :' : 'Relance en acceptant un état :'}</p><div class="conds small">${free.map((a) => `<button class="cond-chip" data-r="push" data-k="${a.key}"><b>${a.cond}</b><small>${a.key}</small></button>`).join('')}</div></div>` : ''}
+      ${canPush ? `<div class="push"><p class="small"><b>Forcer le jet ?</b> Relance en acceptant un état :</p><div class="conds small">${free.map((a) => `<button class="cond-chip" data-r="push" data-k="${a.key}"><b>${a.cond}</b><small>${a.key}</small></button>`).join('')}</div></div>` : ''}
       <div class="dlg-actions">
         <button class="btn ghost" data-r="close">Fermer</button><span class="spacer"></span>
-        ${weapon && r?.success && !real ? `<button class="btn gold" data-r="dmg">Dégâts</button>` : ''}
-        ${real || (once && r) ? '' : `<button class="btn" data-r="roll">${icon('d20')} ${r ? 'Nouveau jet' : 'Lancer'}</button>`}
+        ${weapon && r?.success ? `<button class="btn gold" data-r="dmg">Dégâts</button>` : ''}
+        ${once && r ? '' : `<button class="btn" data-r="roll">${icon('d20')} ${r ? 'Nouveau jet' : 'Lancer'}</button>`}
       </div>
     </div>`;
-    const inp = dlg.querySelector('#manualVal');
-    if (inp) {
-      inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); dlg.querySelector('[data-r=manual]:not([data-v])').click(); } };
-      if (!matchMedia('(pointer: coarse)').matches) inp.focus();
-    }
   };
-  // Applique un résultat (appli ou vrai dé) : coche automatique, messages, suite propre au jet
-  const apply = (res) => {
-    st.res = res;
+  const roll = () => {
+    st.res = R.rollD20(target, st.boons, st.banes);
     st.dmg = null; st.msg = '';
-    if (skill && (res.dragon || res.demon) && !skill.mark) {
+    if (skill && (st.res.dragon || st.res.demon) && !skill.mark) {
       skill.mark = 'jeu';
       st.msg = `✦ ${esc(skill.name)} est cochée pour l’amélioration.`;
       commit(false);
     }
-    if (res.dragon && weapon) st.msg += ' Coup critique : effet bonus au choix.';
-    if (res.demon && skill?.kind === 'magie') st.msg += ' Incident magique !';
-    if (st.awaitPush) { st.msg = `Jet forcé : tu es ${R.ATTR[st.awaitPush].cond.toLowerCase()}. ${st.msg}`; st.awaitPush = null; }
-    onResult?.(res, st);
+    if (st.res.dragon && weapon) st.msg += ' Coup critique : effet bonus au choix.';
+    if (st.res.demon && skill?.kind === 'magie') st.msg += ' Incident magique !';
+    onResult?.(st.res, st);
   };
   dlg.onclick = (e) => {
     const b = e.target.closest('[data-r]');
     if (!b) return;
     const k = b.dataset.r;
     if (k === 'close') { dlg.close(); render(); return; }
-    if (k === 'mode') setRealDice(b.dataset.v === '1');
     if (k === 'boon') st.boons = Math.max(0, st.boons + +b.dataset.d);
     if (k === 'bane') st.banes = Math.max(0, st.banes + +b.dataset.d);
-    if (k === 'roll') { st.pushed = false; apply(R.rollD20(target, st.boons, st.banes)); }
-    if (k === 'manual') {
-      const v = b.dataset.v ? +b.dataset.v : Math.round(num(dlg.querySelector('#manualVal')?.value));
-      if (v < 1 || v > 20) { toast('Entre un résultat entre 1 et 20'); return; }
-      if (!st.awaitPush) st.pushed = false;
-      apply(manualResult(v, target, st.boons, st.banes));
-    }
+    if (k === 'roll') { st.pushed = false; roll(); }
     if (k === 'push') {
       c.conditions[b.dataset.k] = true; st.pushed = true;
       commit(false);
-      if (realDice()) { st.awaitPush = b.dataset.k; st.res = null; st.msg = ''; }
-      else { st.awaitPush = b.dataset.k; apply(R.rollD20(target, st.boons, st.banes)); }
+      roll();
+      st.msg = `Jet forcé : tu es ${R.ATTR[b.dataset.k].cond.toLowerCase()}. ${st.msg}`;
     }
-    if (k === 'dmg') st.dmg = R.rollExpr(dmgExpr());
+    if (k === 'dmg') {
+      const bonus = weapon.bonus ? R.damageBonus(c.attrs[weapon.bonus]) : '';
+      st.dmg = R.rollExpr(`${weapon.damage}${bonus ? `+${bonus}` : ''}`);
+    }
     draw();
   };
   dlg.onclose = () => { dlg.onclose = null; render(); };
@@ -985,7 +938,6 @@ const A = {
         <button type="button" data-m="exportAll">${icon('down')} Exporter tous les personnages</button>
         <button type="button" data-m="importFile">${icon('upload')} Importer un fichier</button>
         <button type="button" data-m="cloudMenu">${icon('cloud')} Sauvegarde en ligne</button>
-        <button type="button" data-m="toggleDice">${icon('d20')} <span><b>Dés : ${realDice() ? 'mes vrais dés' : 'lancés par l’appli'}</b><small>Toucher pour passer ${realDice() ? 'aux dés de l’appli' : 'à tes vrais dés (tu entres le résultat)'}</small></span></button>
       </div>
       <p class="small muted center">Fiche Dragonbane · fonctionne hors ligne</p>`,
       actions: [closeBtn],
@@ -1002,7 +954,6 @@ const A = {
     });
   },
   newCharacter() { creationDialog(); },
-  toggleDice() { setRealDice(!realDice()); toast(realDice() ? 'Mes vrais dés : tu entres le résultat du D20' : 'Les dés sont lancés par l’appli'); },
   deleteCharacter() {
     const c = C();
     confirmDialog('Supprimer le personnage', `Supprimer <b>${esc(c.name)}</b> sur tous tes appareils ? Pense à l’exporter d’abord si tu veux le garder.`, 'Supprimer', () => { store.remove(c.id); ui.mode = 'normal'; render(); toast('Personnage supprimé'); });
@@ -1055,6 +1006,25 @@ const A = {
     }
     if (!s.value) { toast(`${s.name} : niveau 0, impossible de lancer (passe en mode libre pour l’entraîner)`); return; }
     openRoll({ title: s.name, target: s.value, attr: s.attr, skill: s });
+  },
+  // Coche d'amélioration posée à la main (jet fait avec de vrais dés, ou oubli)
+  markSkill(el) {
+    const c = C(); const s = c.skills.find((x) => x.id === el.dataset.id);
+    if (!s) return;
+    if (isProg()) return A.skill(el);
+    if (s.mark) {
+      confirmDialog('Retirer la coche', `Retirer la coche d’amélioration de <b>${esc(s.name)}</b> ?`, 'Retirer', () => {
+        if (s.mark === 'seance') c.pendingMarks++;
+        s.mark = false; commit();
+      });
+      return;
+    }
+    openDialog({
+      title: 'Dragon ou Démon ?',
+      body: `<p>As-tu obtenu un <b>Dragon</b> (1) ou un <b>Démon</b> (20) sur un jet de <b>${esc(s.name)}</b> ?</p>
+        <p class="small muted">La compétence reçoit une coche d’amélioration : en fin de séance, tu lanceras un D20 pour tenter de l’améliorer.</p>`,
+      actions: [cancel, { label: '✦ Cocher la compétence', primary: true, onClick: () => { s.mark = 'jeu'; commit(); toast(`✦ ${s.name} est cochée pour l’amélioration`); } }],
+    });
   },
   addSkill() {
     const c = C();
@@ -1225,38 +1195,13 @@ const A = {
       } }],
     });
   },
-  advanceRolls(el, e, manual = null) {
+  advanceRolls() {
     const c = C();
     const marked = c.skills.filter((s) => s.mark);
     if (!marked.length) return;
-    // Vrais dés : on demande d'abord le résultat du D20 pour chaque compétence cochée
-    if (realDice() && !manual) {
-      openDialog({
-        title: 'Jets d’amélioration',
-        body: `<p class="small">Lance un D20 par compétence : si le résultat est <b>supérieur</b> au niveau, elle gagne +1.</p>
-          <div class="adv-list">${marked.map((s) => `<label class="adv"><span>${esc(s.name)}</span><input type="number" inputmode="numeric" min="1" max="20" name="r_${s.id}" placeholder="D20"><b>${s.value}</b></label>`).join('')}</div>
-          <p class="small muted">Une case vide est lancée par l’appli.</p>`,
-        actions: [
-          { label: 'Dés de l’appli', cls: 'ghost', onClick: () => { setTimeout(() => A.advanceRolls(null, null, {})); } },
-          'spacer', cancel,
-          { label: 'Valider', primary: true, onClick: (f) => {
-            const vals = {};
-            for (const s of marked) {
-              const raw = f[`r_${s.id}`].value.trim();
-              if (!raw) continue;
-              const v = Math.round(num(raw));
-              if (v < 1 || v > 20) { toast(`${s.name} : entre un résultat entre 1 et 20`); return false; }
-              vals[s.id] = v;
-            }
-            setTimeout(() => A.advanceRolls(null, null, vals));
-          } },
-        ],
-      });
-      return;
-    }
     const prev = marked.map((s) => ({ id: s.id, value: s.value, mark: s.mark }));
     const results = marked.map((s) => {
-      const roll = manual?.[s.id] ?? R.d(20);
+      const roll = R.d(20);
       const up = roll > s.value && s.value < 18;
       const before = s.value;
       if (up) s.value += 1;
