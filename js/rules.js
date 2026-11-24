@@ -341,3 +341,32 @@ export function rollD20(target, boons = 0, banes = 0) {
   const success = dragon || (!demon && kept <= target);
   return { dice, kept, net, dragon, demon, success, target };
 }
+
+// ----- Groupe : caisse commune et montures / véhicules -----
+// capacity : encombrement transporté · people : passagers · animal : peut être harnaché ou porter des sacoches
+export const CARRIER_TYPES = {
+  ane: { name: 'Âne', capacity: 10, animal: true, note: 'Ne peut pas être monté.' },
+  cheval: { name: 'Cheval de selle', capacity: 10, animal: true, note: 'Porte un cavalier et 10, ou deux cavaliers.' },
+  destrier: { name: 'Cheval de guerre', capacity: 10, animal: true, note: 'Porte un cavalier et 10, ou deux cavaliers.' },
+  char: { name: 'Charrette', capacity: 50, people: 2, pulls: 1, note: 'Tirée par un cheval ou un âne. Deux passagers.' },
+  chariot: { name: 'Chariot', capacity: 100, people: 4, pulls: 2, note: 'Tiré par deux chevaux ou ânes. Quatre passagers.' },
+  barque: { name: 'Barque', capacity: 50, people: 4, note: 'Quatre passagers.' },
+  coffre: { name: 'Coffre', capacity: 20, note: 'Contenant (armure 5, 25 points de dégâts).' },
+  autre: { name: 'Autre', capacity: 10 },
+};
+export const newCarrier = (type, name) => ({ id: uid(), type, name: name || CARRIER_TYPES[type]?.name || 'Transport', capacity: CARRIER_TYPES[type]?.capacity ?? 10, saddlebags: 0, harness: false, pulledBy: [], items: [], notes: '' });
+export function newGroup() {
+  const a1 = newCarrier('ane', 'Âne 1'); const a2 = newCarrier('ane', 'Âne 2');
+  const cart = newCarrier('char', 'Char');
+  return { money: { or: 0, argent: 0, cuivre: 0 }, log: [], carriers: [a1, a2, cart], notes: '', updatedAt: 0 };
+}
+export function upgradeGroup(g) {
+  g.money ??= { or: 0, argent: 0, cuivre: 0 };
+  g.log ??= [];
+  g.carriers ??= [];
+  g.carriers.forEach((k) => { k.items ??= []; k.pulledBy ??= []; k.saddlebags ??= 0; });
+  return g;
+}
+// Capacité réelle : base + 2 par sacoche de selle (2 au plus, animaux seulement)
+export const carrierCapacity = (k) => (+k.capacity || 0) + (CARRIER_TYPES[k.type]?.animal ? Math.min(2, +k.saddlebags || 0) * 2 : 0);
+export const carrierLoad = (k) => k.items.reduce((n, it) => n + (+it.weight || 0) * (+it.qty || 1), 0);

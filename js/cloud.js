@@ -56,19 +56,27 @@ export async function pull() {
   const snap = await fb.getDocs(col());
   const characters = {};
   const deleted = {};
+  let group = null;
   snap.forEach((doc) => {
     const v = doc.data();
+    // Le groupe est rangé dans le champ « group » (pas « json ») : les anciennes versions l'ignorent
+    if (doc.id === GROUP_ID) { if (v.group) group = JSON.parse(v.group); return; }
     if (v.deleted) deleted[doc.id] = v.updatedAt || 0;
     else if (v.json) characters[doc.id] = JSON.parse(v.json);
   });
-  return { characters, deleted };
+  return { characters, deleted, group };
 }
+const GROUP_ID = '__groupe';
 
 // Envoie les personnages modifiés depuis la dernière synchro
-export async function push(characters, deleted, since) {
+export async function push(characters, deleted, since, group = null) {
   const c = col();
   const batch = fb.writeBatch(db);
   let n = 0;
+  if (group && (group.updatedAt || 0) > since) {
+    batch.set(fb.doc(c, GROUP_ID), { group: JSON.stringify(group), updatedAt: group.updatedAt });
+    n++;
+  }
   for (const ch of Object.values(characters)) {
     if ((ch.updatedAt || 0) <= since) continue;
     batch.set(fb.doc(c, ch.id), { json: JSON.stringify(ch), name: ch.name, updatedAt: ch.updatedAt || Date.now(), deleted: false });

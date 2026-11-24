@@ -1,6 +1,6 @@
 // Données : toujours enregistrées sur l'appareil d'abord, puis envoyées en ligne dès que possible.
 import * as cloud from './cloud.js';
-import { upgradeCharacter } from './rules.js';
+import { upgradeCharacter, newGroup, upgradeGroup } from './rules.js';
 import { FIREBASE_CONFIG } from './config.js';
 
 const DATA_KEY = 'dragonbane.data';
@@ -13,6 +13,8 @@ function load(key, fallback) {
 const data = load(DATA_KEY, { characters: {}, deleted: {} });
 const meta = load(META_KEY, { currentId: null, firebase: null, dirty: false, lastSync: 0, lastPush: 0 });
 Object.values(data.characters).forEach(upgradeCharacter);
+// Caisse et matériel du groupe (montures, véhicules) : un seul par compte
+data.group = upgradeGroup(data.group || newGroup());
 
 let syncTimer = null;
 let syncing = false;
@@ -75,8 +77,11 @@ export const store = {
     markDirty();
   },
   save() { markDirty(); },
+  get group() { return data.group; },
+  saveGroup() { data.group.updatedAt = Date.now(); markDirty(); },
 
   exportAll() { return JSON.stringify({ format: 'dragonbane', version: 1, ...data }, null, 2); },
+  // (l'import d'un export complet reprend aussi le groupe s'il est plus récent)
   exportOne(c) { return JSON.stringify({ format: 'dragonbane', version: 1, characters: { [c.id]: c } }, null, 2); },
   importAll(json) {
     const incoming = JSON.parse(json);
@@ -91,6 +96,7 @@ export const store = {
       n++;
     }
     if (n) meta.currentId = chars.find((c) => c?.id && c.attrs).id;
+    if (incoming.group && (incoming.group.updatedAt || 0) > (data.group.updatedAt || 0)) data.group = upgradeGroup(incoming.group);
     markDirty();
     return n;
   },
@@ -113,10 +119,10 @@ export const store = {
       const start = Date.now();
       const remote = await cloud.pull();
       const changed = merge(remote);
-      await cloud.push(data.characters, data.deleted, meta.lastPush);
+      await cloud.push(data.characters, data.deleted, meta.lastPush, data.group);
       meta.lastPush = start;
       meta.lastSync = Date.now();
-      meta.dirty = Object.values(data.characters).some((c) => (c.updatedAt || 0) > start);
+      meta.dirty = Object.values(data.characters).some((c) => (c.updatedAt || 0) > start) || (data.group.updatedAt || 0) > start;
       persist();
       setStatus(meta.dirty ? 'pending' : 'synced', `Synchronisé (${cloud.user().email})`, { reloaded: changed });
     } catch (e) {
@@ -155,6 +161,7 @@ function scheduleSync() {
 // Fusion : pour chaque personnage, la version modifiée le plus récemment gagne
 function merge(remote) {
   let changed = false;
+  if (remote.group && (remote.group.updatedAt || 0) > (data.group.updatedAt || 0)) { data.group = upgradeGroup(remote.group); changed = true; }
   for (const [id, ts] of Object.entries(remote.deleted || {})) {
     data.deleted[id] = Math.max(data.deleted[id] || 0, ts);
   }

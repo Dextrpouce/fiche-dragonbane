@@ -507,3 +507,24 @@ nav.tabs button span { white-space: nowrap; }
 /* Boutons de dégâts (normaux + capacités) */
 .dmg-opts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
 .check input[type=radio] { width: 20px; height: 20px; accent-color: var(--red); flex: none; margin: 0; }
+
+/* ---------- Groupe ---------- */
+.caisse { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin: 4px 0; }
+.coin-big { display: flex; flex-direction: column; align-items: center; min-width: 90px; padding: 8px 12px; border-radius: 12px; background: rgba(255, 255, 255, .35); border: 1px solid var(--line); font-size: 14px; color: var(--ink-soft); }
+.coin-big b { font-family: var(--font-body); font-variant-numeric: lining-nums; font-size: 30px; line-height: 1.1; color: var(--ink); }
+.coin-big.gold b { color: #9a6c12; } .coin-big.silver b { color: #5f686d; } .coin-big.copper b { color: #9a4d24; }
+.center-row { justify-content: center; }
+.groupe .log-row { grid-template-columns: 62px 1fr auto 34px; }
+.log-amt { font-weight: 700; white-space: nowrap; font-variant-numeric: lining-nums; }
+.good { color: var(--green); }
+.carrier-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.carrier-ico { font-size: 30px; line-height: 1; }
+.carrier-name { flex: 1; min-width: 0; }
+.carrier-name b { font-family: var(--font-title); font-weight: 400; font-size: 22px; color: var(--red); display: block; }
+.carrier-name small { color: var(--ink-soft); font-size: 14px; }
+.carrier .icon-btn.small { margin-left: 0; }
+.rig { margin-top: 10px; display: grid; gap: 8px; }
+.rig-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.rig-row span small { color: var(--ink-soft); }
+.rig-row select { width: auto; min-width: 160px; }
+.carrier .step button { width: 34px; height: 34px; }
