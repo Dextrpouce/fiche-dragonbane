@@ -423,7 +423,7 @@ function viewGroupe(c) {
     const cap = R.carrierCapacity(k); const load = R.carrierLoad(k);
     const items = k.items.map((it, i) => `<button class="list-item" data-act="gItem" data-k="${k.id}" data-i="${i}">
         <span class="badge soft" title="Encombrement">${(+it.weight || 0) * (+it.qty || 1)}</span>
-        <span class="li-main"><div class="li-title">${esc(it.name)}${+it.qty > 1 ? ` <span class="muted">×${it.qty}</span>` : ''}</div>${it.notes ? `<div class="li-sub">${esc(it.notes)}</div>` : ''}</span>
+        <span class="li-main"><div class="li-title">${esc(it.name)}${+it.qty > 1 ? ` <span class="muted">×${it.qty}</span>` : ''}${it.sell ? ` <span class="tag sell">à vendre${+it.value ? ` · ${fmtMoney(+it.value * (+it.qty || 1))}` : ''}</span>` : ''}</div>${it.notes ? `<div class="li-sub">${esc(it.notes)}</div>` : ''}</span>
       </button>`).join('') || '<div class="empty">Rien pour l’instant.</div>';
     let rig = '';
     if (t.animal) {
@@ -464,6 +464,7 @@ function viewGroupe(c) {
       <h3>Journal</h3>
       ${log}
     </section>
+    ${saleCard(g)}
     ${carriers}
     <section class="card span-all">
       <div class="add-row"><button class="btn ghost small" data-act="gAddCarrier">${icon('plus')} Ajouter une monture, un véhicule ou un coffre</button></div>
@@ -503,6 +504,62 @@ function groupMoneyDialog(sign) {
   });
 }
 
+// Cuivre → pièces (pour pré-remplir les montants)
+const cuToCoins = (cu) => ({ or: Math.floor(cu / 100), argent: Math.floor((cu % 100) / 10), cuivre: cu % 10 });
+const coinFields = (prefix, cu, label = '') => {
+  const m = cuToCoins(+cu || 0);
+  return `${label ? `<label class="coins-label">${label}</label>` : ''}<div class="fields three">${F.num(`${prefix}or`, 'Or', m.or || '')}${F.num(`${prefix}argent`, 'Argent', m.argent || '')}${F.num(`${prefix}cuivre`, 'Cuivre', m.cuivre || '')}</div>`;
+};
+const readCoins = (f, prefix) => ({ or: num(f[`${prefix}or`].value), argent: num(f[`${prefix}argent`].value), cuivre: num(f[`${prefix}cuivre`].value) });
+
+// Objets à vendre : tous les transports, avec valeur estimée et bouton « Vendu »
+function saleCard(g) {
+  const list = g.carriers.flatMap((k) => k.items.map((it, i) => ({ k, it, i })).filter(({ it }) => it.sell));
+  const total = list.reduce((n, { it }) => n + (+it.value || 0) * (+it.qty || 1), 0);
+  const unknown = list.filter(({ it }) => !+it.value).length;
+  return `<section class="card span-all sale">
+    <h2>À vendre</h2>
+    ${list.length ? list.map(({ k, it, i }) => `<div class="sale-row">
+        <span class="sale-main" data-act="gItem" data-k="${k.id}" data-i="${i}"><b>${esc(it.name)}${+it.qty > 1 ? ` ×${it.qty}` : ''}</b><small>${carrierIcon(k)} ${esc(k.name)}${+it.value && +it.qty > 1 ? ` · ${fmtMoney(+it.value)} pièce` : ''}</small></span>
+        <span class="sale-val">${+it.value ? fmtMoney(+it.value * (+it.qty || 1)) : '<span class="muted">à estimer</span>'}</span>
+        <button class="btn small gold" data-act="gSell" data-k="${k.id}" data-i="${i}">Vendu</button>
+      </div>`).join('')
+      : '<div class="empty">Rien à vendre. Touche un objet d’une monture ou du char et coche « À vendre ».</div>'}
+    ${list.length ? `<div class="sale-total"><span>Valeur estimée</span><b>${fmtMoney(total)}</b></div>${unknown ? `<p class="small muted">${unknown} objet${unknown > 1 ? 's' : ''} sans estimation.</p>` : ''}` : ''}
+  </section>`;
+}
+
+// Vente : le prix obtenu entre dans la caisse, l'objet sort du transport (annulable)
+function groupSellDialog(k, i) {
+  const g = G(); const it = k.items[i];
+  const qty = +it.qty || 1;
+  openDialog({
+    title: `Vendre : ${it.name}`,
+    body: `<div class="fields">${F.num('qty', `Quantité vendue (sur ${qty})`, qty, 'full', `min="1" max="${qty}"`)}</div>
+      ${coinFields('p_', (+it.value || 0) * qty, 'Prix obtenu')}
+      <p class="small muted">${+it.value ? `Estimation : ${fmtMoney(+it.value)} pièce. ` : ''}Le prix va dans la caisse du groupe.</p>`,
+    actions: [cancel, { label: 'Vendre', primary: true, onClick: (f) => {
+      const n = clamp(Math.round(num(f.qty.value)), 1, qty);
+      const coins = readCoins(f, 'p_'); const amount = totalCopper(coins);
+      it.id ||= R.uid();
+      const prev = { group: { ...g.money }, item: { k: k.id, index: i, snapshot: { ...it } } };
+      purseAdd(g.money, coins);
+      if (n >= qty) k.items.splice(i, 1); else it.qty = qty - n;
+      g.log.unshift({ id: R.uid(), date: Date.now(), label: `Vente : ${it.name}${n > 1 ? ` ×${n}` : ''}`, amount, sign: 1, who: '', prev });
+      commitGroup();
+      toast(`${it.name} vendu${amount ? ` : +${fmtMoney(amount)}` : ''}`);
+    } }],
+    onOpen: (f) => {
+      // Changer la quantité recalcule le prix d'après l'estimation
+      f.qty.oninput = () => {
+        if (!+it.value) return;
+        const m = cuToCoins(+it.value * clamp(Math.round(num(f.qty.value)), 1, qty));
+        f.p_or.value = m.or || ''; f.p_argent.value = m.argent || ''; f.p_cuivre.value = m.cuivre || '';
+      };
+    },
+  });
+}
+
 function groupItemDialog(k, i) {
   const c = C(); const g = G(); const it = k.items[i];
   const dests = [['', '— Ne pas déplacer —'], ...g.carriers.filter((x) => x.id !== k.id).map((x) => [`k:${x.id}`, `${carrierIcon(x)} ${x.name}`]), [`c:${c.id}`, `🎒 Sac de ${c.name}`]];
@@ -514,16 +571,19 @@ function groupItemDialog(k, i) {
       ${F.num('weight', 'Encombrement (par unité)', it.weight)}
       ${F.area('notes', 'Notes', it.notes)}
       ${F.select('dest', 'Déplacer vers', '', dests, 'full')}
-    </div>`,
+      ${F.check('sell', '<b>À vendre</b> (on ne le garde pas)', !!it.sell, 'full')}
+    </div>
+    <div class="sell-value" ${it.sell ? '' : 'hidden'}>${coinFields('v_', it.value, 'Valeur estimée (par pièce)')}</div>`,
     actions: [{ label: icon('trash'), cls: 'ghost', onClick: () => { k.items.splice(i, 1); commitGroup(); } }, 'spacer', cancel,
       { label: 'Enregistrer', primary: true, onClick: (f) => {
-        Object.assign(it, { name: f.name.value.trim() || 'Objet', qty: Math.max(1, num(f.qty.value)), weight: num(f.weight.value), notes: f.notes.value.trim() });
+        Object.assign(it, { name: f.name.value.trim() || 'Objet', qty: Math.max(1, num(f.qty.value)), weight: num(f.weight.value), notes: f.notes.value.trim(), sell: f.sell.checked, value: f.sell.checked ? totalCopper(readCoins(f, 'v_')) : (it.value || 0) });
         const d = f.dest.value;
         if (d.startsWith('k:')) { k.items.splice(i, 1); g.carriers.find((x) => x.id === d.slice(2)).items.push(it); }
         if (d.startsWith('c:')) { k.items.splice(i, 1); c.items.push({ name: it.name, qty: it.qty, weight: it.weight, notes: it.notes, worn: false }); c.updatedAt = Date.now(); store.save(); }
         commitGroup();
         if (d) toast(`${it.name} déplacé`);
       } }],
+    onOpen: (f) => { f.sell.onchange = () => { f.querySelector('.sell-value').hidden = !f.sell.checked; }; },
   });
 }
 
@@ -1544,11 +1604,19 @@ const A = {
     if (!e) return;
     g.money = { ...e.prev.group };
     if (e.prev.char) { const ch = store.list().find((x) => x.id === e.prev.char.id); if (ch) { ch.money = { ...e.prev.char.money }; ch.updatedAt = Date.now(); store.save(); } }
+    // Vente annulée : l'objet revient dans son transport
+    if (e.prev.item) {
+      const k = g.carriers.find((x) => x.id === e.prev.item.k) || g.carriers[0];
+      const snap = e.prev.item.snapshot;
+      const cur = k?.items.find((x) => x.id === snap.id);
+      if (cur) cur.qty = snap.qty; else k?.items.splice(Math.min(e.prev.item.index, k.items.length), 0, { ...snap });
+    }
     e.undone = true;
     commitGroup();
     toast(`Annulé : ${e.label}`);
   },
   gItem(el) { const k = G().carriers.find((x) => x.id === el.dataset.k); groupItemDialog(k, +el.dataset.i); },
+  gSell(el) { const k = G().carriers.find((x) => x.id === el.dataset.k); groupSellDialog(k, +el.dataset.i); },
   gSaddle(el) { const k = G().carriers.find((x) => x.id === el.dataset.k); k.saddlebags = clamp((+k.saddlebags || 0) + +el.dataset.d, 0, 2); commitGroup(); },
   gEditCarrier(el) { groupCarrierDialog(G().carriers.find((x) => x.id === el.dataset.k)); },
   gAddCarrier() { groupCarrierDialog(null); },
