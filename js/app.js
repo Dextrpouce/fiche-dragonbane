@@ -187,7 +187,7 @@ function vitals(c) {
   return `<div class="vitals">
     <div class="vital hp" data-act="tab" data-tab="combat"><span class="vk">PV</span><span class="vv">${c.hp.cur}<small>/${hpMax}</small></span><span class="vbar"><i style="width:${hpMax ? clamp(c.hp.cur / hpMax * 100, 0, 100) : 0}%"></i></span></div>
     <div class="vital wp" data-act="tab" data-tab="combat"><span class="vk">PVol</span><span class="vv">${c.wp.cur}<small>/${wpMax}</small></span><span class="vbar"><i style="width:${wpMax ? clamp(c.wp.cur / wpMax * 100, 0, 100) : 0}%"></i></span></div>
-    <div class="vital conds" data-act="tab" data-tab="combat">${conds.length ? conds.map((a) => `<span class="cond-pill">${a.cond}</span>`).join('') : '<span class="vk">Aucun état</span>'}</div>
+    <div class="vital conds" data-act="tab" data-tab="combat">${c.music ? '<span class="cond-pill music">♪ Barde</span>' : ''}${conds.length ? conds.map((a) => `<span class="cond-pill">${a.cond}</span>`).join('') : c.music ? '' : '<span class="vk">Aucun état</span>'}</div>
   </div>`;
 }
 
@@ -335,6 +335,11 @@ function viewCombat(c) {
       <h2>États</h2>
       <div class="conds">${conds}</div>
       <p class="small muted hint">Un état donne un désavantage aux jets de l’attribut indiqué et des compétences qui en dépendent.</p>
+      <button class="music-toggle ${c.music ? 'on' : ''}" data-act="music" aria-pressed="${c.music ? 'true' : 'false'}">
+        <span class="mt-icon">♪</span>
+        <span class="mt-txt"><b>${c.music ? 'Le barde joue' : 'Musique du barde'}</b><small>${c.music ? 'Avantage à tous tes jets — touche pour arrêter' : 'Touche quand le barde joue : avantage à tous tes jets'}</small></span>
+        <span class="mt-switch"><i></i></span>
+      </button>
     </section>
     <section class="card span-2">
       <h2>Armes</h2>
@@ -574,7 +579,8 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
   const reasons = [];
   if (attr && c.conditions[attr]) reasons.push(`${R.ATTR[attr].cond}`);
   if (skill) R.armorBanes(c, skill).forEach((n) => reasons.push(n));
-  const st = { boons: 0, banes: reasons.length ? 1 : 0, res: null, pushed: false, dmg: null, msg: '' };
+  const boosts = c.music ? ['Musique du barde'] : [];
+  const st = { boons: boosts.length ? 1 : 0, banes: reasons.length ? 1 : 0, res: null, pushed: false, dmg: null, msg: '' };
 
   const draw = () => {
     const r = st.res;
@@ -590,6 +596,7 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
         <div class="bb-col"><span>Avantages</span><div class="step"><button data-r="boon" data-d="-1">−</button><span class="val">${st.boons}</span><button data-r="boon" data-d="1">+</button></div></div>
         <div class="bb-col"><span>Désavantages</span><div class="step"><button data-r="bane" data-d="-1">−</button><span class="val">${st.banes}</span><button data-r="bane" data-d="1">+</button></div></div>
       </div>
+      ${boosts.length ? `<p class="small center boon">♪ Avantage : ${esc(boosts.join(', '))}</p>` : ''}
       ${reasons.length ? `<p class="small center bad">Désavantage : ${esc(reasons.join(', '))}</p>` : ''}
       <div class="roll-zone">
         ${r ? `<div class="dice">${r.dice.map((v, i) => `<span class="die ${r.dice.length > 1 && v !== r.kept ? 'drop' : ''} ${v === 1 ? 'dragon' : v === 20 ? 'demon' : ''}" style="animation-delay:${i * 80}ms">${v}</span>`).join('')}</div>${verdict}` : `<div class="dice idle"><span class="die">${icon('d20')}</span></div>`}
@@ -1058,6 +1065,7 @@ const A = {
     });
   },
   cond(el) { const c = C(); c.conditions[el.dataset.k] = !c.conditions[el.dataset.k]; commit(); },
+  music() { const c = C(); c.music = !c.music; commit(); toast(c.music ? '♪ Le barde joue : avantage à tous tes jets' : 'La musique s’arrête'); },
   deathRoll() {
     const c = C();
     openRoll({ title: 'Jet de mort', target: c.attrs.CON, attr: 'CON', noPush: true, once: true, note: `Réussites ${c.death.succ}/3 · Échecs ${c.death.fail}/3 · un Dragon compte double, un Démon aussi`, onResult: (r, st) => {
