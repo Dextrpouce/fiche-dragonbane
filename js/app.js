@@ -292,7 +292,7 @@ function viewCombat(c) {
     const sk = c.skills.find((s) => s.id === w.skill);
     const bonus = w.bonus ? R.damageBonus(c.attrs[w.bonus]) : '';
     return `<div class="weapon ${w.broken ? 'broken' : ''}">
-      <div class="w-head"><b>${esc(w.name || 'Arme')}</b>${w.broken ? ' <span class="tag bad">brisée</span>' : ''}<button class="icon-btn small" data-act="editWeapon" data-i="${i}" aria-label="Modifier">${icon('edit')}</button></div>
+      <div class="w-head"><b>${esc(w.name || 'Arme')}</b>${w.broken ? ' <span class="tag bad">brisée</span>' : ''}</div>
       <div class="w-stats">
         <span><small>Compétence</small>${esc(sk?.name || '—')} <b>${sk?.value ?? '—'}</b></span>
         <span><small>Dégâts</small><b>${esc(w.damage || '—')}${bonus ? ` + ${bonus}` : ''}</b></span>
@@ -309,13 +309,17 @@ function viewCombat(c) {
     </div>`;
   }).join('') || '<div class="empty">Aucune arme.</div>';
 
+  // Lecture seule : armes et armures se gèrent dans le Sac
   const armor = (k, label) => {
     const a = c[k];
-    return `<button class="list-item" data-act="editArmor" data-k="${k}">
+    if (!a.name && !a.rating) return '';
+    return `<div class="list-item">
       <span class="badge ${a.rating ? '' : 'soft'}">${a.rating || 0}</span>
       <span class="li-main"><div class="li-title">${esc(a.name || label)}</div><div class="li-sub">${a.banes ? `Désavantage : ${esc(a.banes)}` : 'Aucun désavantage'}</div></span>
-    </button>`;
+    </div>`;
   };
+  const toSac = (label) => `<button class="btn ghost small" data-act="tab" data-tab="sac">${icon('bag')} ${label}</button>`;
+  const armorRows = armor('armor', 'Armure') + armor('helmet', 'Casque');
 
   const esquive = c.skills.find((s) => s.id === 'esquive');
   return `<div class="grid combat">
@@ -324,8 +328,7 @@ function viewCombat(c) {
     <section class="card">
       <h2>Protection</h2>
       <div class="armor-total"><span>Valeur d’armure</span><b>${R.armorTotal(c)}</b></div>
-      ${armor('armor', 'Armure')}
-      ${armor('helmet', 'Casque')}
+      ${armorRows || `<div class="empty">Ni armure ni casque.</div><div class="add-row">${toSac('Équiper dans le Sac')}</div>`}
     </section>
     ${death}
     <section class="card span-all">
@@ -336,8 +339,8 @@ function viewCombat(c) {
     <section class="card span-2">
       <h2>Armes</h2>
       ${weapons}
-      <div class="add-row"><button class="btn ghost small" data-act="editWeapon" data-i="-1">${icon('plus')} Ajouter une arme</button>
-      ${esquive ? `<button class="btn ghost small" data-act="skill" data-id="esquive" data-roll="1">${icon('d20')} Esquiver (${esquive.value})</button>` : ''}</div>
+      <div class="add-row">${c.weapons.length ? '' : toSac('Ajouter des armes dans le Sac')}
+      ${esquive ?`<button class="btn ghost small" data-act="skill" data-id="esquive" data-roll="1">${icon('d20')} Esquiver (${esquive.value})</button>` : ''}</div>
     </section>
     <section class="card">
       <h2>Repos</h2>
@@ -417,7 +420,36 @@ function viewSac(c) {
       <span class="badge soft" title="Encombrement">${it.worn ? '—' : (+it.weight || 0) * (+it.qty || 1)}</span>
       <span class="li-main"><div class="li-title">${esc(it.name)}${+it.qty > 1 ? ` <span class="muted">×${it.qty}</span>` : ''}</div>${it.notes ? `<div class="li-sub">${esc(it.notes)}</div>` : ''}</span>
     </button>`).join('') || '<div class="empty">Sac vide.</div>';
+  const weapons = c.weapons.map((w, i) => {
+    const sk = c.skills.find((s) => s.id === w.skill);
+    const bonus = w.bonus ? R.damageBonus(c.attrs[w.bonus]) : '';
+    const info = [sk?.name, w.grip, w.range && `portée ${w.range}`, w.durability && `solidité ${w.durability}`, w.features].filter(Boolean).join(' · ');
+    return `<button class="list-item ${w.broken ? 'worn' : ''}" data-act="editWeapon" data-i="${i}">
+      <span class="badge" title="Dégâts">${esc(w.damage || '—')}${bonus ? `<small>+${bonus}</small>` : ''}</span>
+      <span class="li-main"><div class="li-title">${esc(w.name || 'Arme')}${w.broken ? ' <span class="tag bad">brisée</span>' : ''}</div>${info ? `<div class="li-sub">${esc(info)}</div>` : ''}</span>
+    </button>`;
+  }).join('') || '<div class="empty">Aucune arme.</div>';
+  const armorRow = (k, label) => {
+    const a = c[k];
+    return `<button class="list-item" data-act="editArmor" data-k="${k}">
+      <span class="badge ${a.rating ? '' : 'soft'}" title="Valeur d’armure">${a.rating || 0}</span>
+      <span class="li-main"><div class="li-title">${esc(a.name || `${label} : aucun${k === 'armor' ? 'e' : ''}`)}</div><div class="li-sub">${a.banes ? `Désavantage : ${esc(a.banes)}` : 'Aucun désavantage'}</div></span>
+    </button>`;
+  };
   return `<div class="grid two">
+    <section class="card">
+      <h2>Armes à portée de main</h2>
+      ${weapons}
+      ${c.weapons.length > 3 ? '<p class="small bad">3 armes au plus à portée de main : range les autres dans l’équipement.</p>' : ''}
+      <div class="add-row"><button class="btn ghost small" data-act="editWeapon" data-i="-1">${icon('plus')} Ajouter une arme</button></div>
+    </section>
+    <section class="card">
+      <h2>Armure et casque</h2>
+      <div class="armor-total"><span>Valeur d’armure</span><b>${R.armorTotal(c)}</b></div>
+      ${armorRow('armor', 'Armure')}
+      ${armorRow('helmet', 'Casque')}
+      <p class="small muted hint">Touche pour changer. Les compétences gênées reçoivent un désavantage automatique.</p>
+    </section>
     <section class="card">
       <h2>Bourse</h2>
       <div class="coins">${coin('or', 'Or', 'gold')}${coin('argent', 'Argent', 'silver')}${coin('cuivre', 'Cuivre', 'copper')}</div>
@@ -428,7 +460,7 @@ function viewSac(c) {
       <h2>Encombrement</h2>
       <div class="enc ${used > lim ? 'over' : ''}"><b>${used}</b> / ${lim}</div>
       <div class="bar"><i style="width:${lim ? clamp(used / lim * 100, 0, 100) : 0}%"></i></div>
-      <p class="small muted">Limite : FOR ÷ 2 (arrondi au supérieur)${c.backpack ? ' + 2 (sac à dos)' : ''}. Les armes à portée de main (3 au plus), l’armure et le casque portés ne comptent pas. 4 rations = 1 objet.${used > lim ? ' <b class="bad">Surchargé : jet de FOR pour avancer.</b>' : ''}${c.weapons.length > 3 ? ` <b class="bad">${c.weapons.length} armes : 3 au plus à portée de main, range les autres dans l’équipement.</b>` : ''}</p>
+      <p class="small muted">Limite : FOR ÷ 2 (arrondi au supérieur)${c.backpack ? ' + 2 (sac à dos)' : ''}. Les armes à portée de main (3 au plus), l’armure et le casque portés ne comptent pas. 4 rations = 1 objet.${used > lim ? ' <b class="bad">Surchargé : jet de FOR pour avancer.</b>' : ''}</p>
       <label class="check"><input type="checkbox" data-act="toggleBackpack" ${c.backpack ? 'checked' : ''}><span>Sac à dos (+2)</span></label>
     </section>
     <section class="card span-all">
