@@ -746,7 +746,7 @@ function viewSac(c) {
     const bonus = w.bonus ? R.damageBonus(c.attrs[w.bonus]) : '';
     const info = [sk?.name, w.grip, w.range && `portée ${rangeTxt(c, w.range)}`, +w.strReq && `FOR ${w.strReq}`, w.durability && `solidité ${w.durability}`, w.features].filter(Boolean).join(' · ');
     return `<button class="list-item ${w.broken ? 'worn' : ''}" data-act="editWeapon" data-i="${i}">
-      <span class="badge" title="Dégâts">${esc(w.damage || '—')}${bonus ? `<small>+${bonus}</small>` : ''}</span>
+      <span class="badge dmg-badge" title="Dégâts${bonus ? ` + bonus ${bonus}` : ''}"><b>${esc(w.damage || '—')}</b>${bonus ? `<small>+${bonus}</small>` : ''}</span>
       <span class="li-main"><div class="li-title">${esc(w.name || 'Arme')}${w.broken ? ' <span class="tag bad">brisée</span>' : ''}</div>${info ? `<div class="li-sub">${esc(info)}</div>` : ''}</span>
     </button>`;
   }).join('') || '<div class="empty">Aucune arme.</div>';

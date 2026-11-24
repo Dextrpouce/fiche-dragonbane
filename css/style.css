@@ -539,3 +539,8 @@ nav.tabs button span { white-space: nowrap; }
 .sale-total { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 2px 0; font-family: var(--font-title); font-size: 18px; }
 .sale-total b { font-family: var(--font-body); font-size: 24px; color: #8a5d10; font-variant-numeric: lining-nums; }
 .coins-label { display: block; font-size: 13px; color: var(--ink-soft); font-family: var(--font-title); margin: 10px 0 4px; }
+
+/* Badge des dégâts d'une arme (Sac) : dégâts et bonus sur deux lignes */
+.badge.dmg-badge { flex-direction: column; height: auto; min-width: 48px; padding: 4px 6px; line-height: 1.05; gap: 1px; }
+.badge.dmg-badge b { font-weight: 700; font-size: 17px; }
+.badge.dmg-badge small { margin: 0; font-size: 12px; opacity: .9; font-weight: 600; }
