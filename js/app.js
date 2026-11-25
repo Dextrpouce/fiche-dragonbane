@@ -511,14 +511,17 @@ function viewGroupe(c) {
   return `<div class="grid two groupe">
     <section class="card span-all">
       <h2>Caisse et comptes</h2>
-      <div class="caisse"><span class="coin-big gold"><b>${+g.money.or || 0}</b> or</span><span class="coin-big silver"><b>${+g.money.argent || 0}</b> argent</span><span class="coin-big copper"><b>${+g.money.cuivre || 0}</b> cuivre</span></div>
-      <p class="small muted center">Total : ${fmtMoney(totalCopper(g.money))}</p>
-      ${g.accounts.length ? `<p class="center fortune">Fortune du groupe : <b class="${fortune(g) < 0 ? 'bad' : ''}">${fortune(g) < 0 ? '−' : ''}${fmtMoney(Math.abs(fortune(g)))}</b><br><small class="muted">caisse + dépôts + ce qu’on nous doit − ce qu’on doit</small></p>` : ''}
-      <div class="add-row center-row">
-        <button class="btn" data-act="gMoney" data-s="1">${icon('plus')} Recette</button>
-        <button class="btn ghost" data-act="gMoney" data-s="-1">${icon('coin')} Dépense</button>
+      <div class="purse-main">
+        <div class="purse-title">${icon('coin')} Caisse du groupe</div>
+        <div class="caisse"><span class="coin-big gold"><b>${+g.money.or || 0}</b> or</span><span class="coin-big silver"><b>${+g.money.argent || 0}</b> argent</span><span class="coin-big copper"><b>${+g.money.cuivre || 0}</b> cuivre</span></div>
+        <p class="small muted center">Total : ${fmtMoney(totalCopper(g.money))}</p>
+        <div class="add-row center-row">
+          <button class="btn" data-act="gMoney" data-s="1">${icon('plus')} Recette</button>
+          <button class="btn ghost" data-act="gMoney" data-s="-1">${icon('coin')} Dépense</button>
+        </div>
       </div>
       ${accountsCard(g)}
+      ${g.accounts.length ? `<p class="center fortune">Fortune du groupe : <b class="${fortune(g) < 0 ? 'bad' : ''}">${fortune(g) < 0 ? '−' : ''}${fmtMoney(Math.abs(fortune(g)))}</b><br><small class="muted">caisse + dépôts + ce qu’on nous doit − ce qu’on doit</small></p>` : ''}
       <div class="group-notes"><h3>Notes du groupe <button class="icon-btn small" data-act="gNotes" aria-label="Modifier les notes">${icon('edit')}</button></h3>
         ${g.notes ? `<p class="small pre">${esc(g.notes)}</p>` : '<p class="small muted">Rendez-vous, promesses, rumeurs… touche le crayon.</p>'}</div>
     </section>
@@ -590,34 +593,41 @@ const ACCOUNT_MOVES = {
 };
 const accountIcon = { depot: '🏦', creance: '📜', dette: '⚖️', projet: '🏗️' };
 
+// Boutons principaux de chaque type de compte : [n° du mouvement dans ACCOUNT_MOVES, libellé, bouton plein ?]
+const ACCOUNT_BUTTONS = {
+  depot: [[0, 'Déposer', true], [1, 'Retirer']],
+  creance: [[0, 'Encaisser', true], [1, 'Prêter']],
+  dette: [[0, 'Rembourser', true], [2, 'Emprunter']],
+  projet: [[0, 'Payer', true]],
+};
+
+// Chaque compte se présente comme la caisse (en plus petit) : pièces, total, boutons
 function accountsCard(g) {
   const rows = g.accounts.map((a) => {
     const kind = ACCOUNT_KINDS[a.kind] || ACCOUNT_KINDS.depot;
-    const bal = +a.bal || 0;
-    let right; let extra = '';
+    const bal = +a.bal || 0; const m = cuToCoins(bal);
+    let total;
     if (a.kind === 'projet') {
       const goal = +a.goal || 0;
-      right = `<b>${fmtMoney(bal)}</b><small>${goal ? `payé sur ${fmtMoney(goal)}` : 'payé'}</small>`;
-      if (goal) {
-        extra = `<div class="bar acct-bar ${bal >= goal ? 'full' : ''}"><i style="width:${clamp(bal / goal * 100, 0, 100)}%"></i></div>
-          <p class="small ${bal >= goal ? 'good' : 'muted'}">${bal >= goal ? 'Payé en entier.' : `Reste à payer : <b>${fmtMoney(goal - bal)}</b>`}</p>`;
-      }
+      total = goal ? `<div class="bar acct-bar ${bal >= goal ? 'full' : ''}"><i style="width:${clamp(bal / goal * 100, 0, 100)}%"></i></div>
+        <p class="small center ${bal >= goal ? 'good' : 'muted'}">Payé : ${fmtMoney(bal)} sur ${fmtMoney(goal)}${bal >= goal ? ' · payé en entier' : ` · <b>reste ${fmtMoney(goal - bal)}</b>`}</p>`
+        : `<p class="small muted center">Payé : ${fmtMoney(bal)}</p>`;
     } else {
-      right = `<b class="${a.kind === 'dette' ? 'bad' : a.kind === 'creance' ? 'good' : ''}">${a.kind === 'dette' && bal ? '−' : ''}${fmtMoney(bal)}</b><small>${esc(kind.name)}</small>`;
+      total = `<p class="small center ${a.kind === 'dette' ? 'bad' : a.kind === 'creance' ? 'good' : 'muted'}">${kind.name} : ${a.kind === 'dette' && bal ? '−' : ''}${fmtMoney(bal)}</p>`;
     }
-    return `<div class="acct">
-      <div class="acct-row">
-        <button class="acct-main" data-act="gAcct" data-id="${a.id}"><span class="acct-ico">${accountIcon[a.kind] || '💰'}</span>
-          <span class="acct-name"><b>${esc(a.name)}</b>${a.notes ? `<small>${esc(a.notes)}</small>` : ''}</span>
-          <span class="acct-bal">${right}</span></button>
-        <button class="icon-btn small" data-act="gEditAcct" data-id="${a.id}" aria-label="Modifier">${icon('edit')}</button>
-      </div>${extra}
+    const buttons = (ACCOUNT_BUTTONS[a.kind] || []).map(([i, label, main]) => `<button class="btn small ${main ? '' : 'ghost'}" data-act="gAcct" data-id="${a.id}" data-m="${i}">${label}</button>`).join('');
+    return `<div class="purse-acct ${a.kind}">
+      <div class="acct-head"><span class="acct-ico">${accountIcon[a.kind] || '💰'}</span>
+        <span class="acct-name"><b>${esc(a.name)}</b><small>${esc(kind.name)}${a.notes ? ` · ${esc(a.notes)}` : ''}</small></span>
+        <button class="icon-btn small" data-act="gEditAcct" data-id="${a.id}" aria-label="Modifier">${icon('edit')}</button></div>
+      <div class="caisse small"><span class="coin-big gold"><b>${m.or}</b> or</span><span class="coin-big silver"><b>${m.argent}</b> argent</span><span class="coin-big copper"><b>${m.cuivre}</b> cuivre</span></div>
+      ${total}
+      <div class="add-row center-row">${buttons}<button class="btn small ghost" data-act="gAcct" data-id="${a.id}" aria-label="Autres opérations">…</button></div>
     </div>`;
   }).join('');
   return `<div class="accounts">
     <h3>Comptes</h3>
-    ${rows || '<div class="empty">Aucun compte. Ajoute un dépôt chez un banquier, une dette, ce qu’on vous doit, ou un projet à payer en plusieurs fois.</div>'}
-    ${rows ? '<p class="small muted hint">Touche un compte pour déposer, retirer, rembourser ou payer : la caisse suit et c’est noté au journal.</p>' : ''}
+    ${rows ? `<div class="acct-grid">${rows}</div>` : '<div class="empty">Aucun compte. Ajoute un dépôt chez un banquier, une dette, ce qu’on vous doit, ou un projet à payer en plusieurs fois.</div>'}
     <div class="add-row center-row"><button class="btn ghost small" data-act="gEditAcct">${icon('plus')} Nouveau compte</button></div>
   </div>`;
 }
@@ -666,7 +676,7 @@ function groupAccountDialog(a) {
 }
 
 // Mouvement sur un compte : dépôt, retrait, remboursement, paiement…
-function groupAccountMoveDialog(a) {
+function groupAccountMoveDialog(a, pick) {
   const g = G();
   const deposits = g.accounts.filter((x) => x.kind === 'depot' && x.id !== a.id);
   const opts = [];
@@ -680,7 +690,7 @@ function groupAccountMoveDialog(a) {
   openDialog({
     title: a.name,
     body: `<p class="small">${state} · caisse : ${fmtMoney(totalCopper(g.money))}</p>
-      <div class="fields">${F.select('move', 'Opération', opts[0]?.[0] || '', opts, 'full')}</div>
+      <div class="fields">${F.select('move', 'Opération', (opts.find(([v]) => pick != null && v.startsWith(`${pick}:`)) || opts[0])?.[0] || '', opts, 'full')}</div>
       <div class="fields three">${F.num('or', 'Or', '', '', 'autofocus')}${F.num('argent', 'Argent', '')}${F.num('cuivre', 'Cuivre', '')}</div>
       <div class="fields">${F.text('label', 'Motif (facultatif)', '', 'full', 'placeholder="Ex. avance pour les fondations"')}</div>`,
     actions: [cancel, { label: 'Valider', primary: true, onClick: (f) => {
@@ -1937,7 +1947,7 @@ const A = {
   gShareCreate() { shareCreateDialog(); },
   gShareJoin() { shareJoinDialog(); },
   gShareCode() { shareCodeDialog(); },
-  gAcct(el) { const a = G().accounts.find((x) => x.id === el.dataset.id); if (a) groupAccountMoveDialog(a); },
+  gAcct(el) { const a = G().accounts.find((x) => x.id === el.dataset.id); if (a) groupAccountMoveDialog(a, el.dataset.m); },
   gEditAcct(el) { const id = el.dataset.id; groupAccountDialog(id ? G().accounts.find((x) => x.id === id) : null); },
   gAddCarrier() { groupCarrierDialog(null); },
   editArmor(el) {

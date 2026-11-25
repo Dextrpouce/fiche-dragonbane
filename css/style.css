@@ -570,17 +570,26 @@ nav.tabs button span { white-space: nowrap; }
 .pre { white-space: pre-line; margin: 4px 0 8px; }
 .carrier-notes { margin: 0 0 6px; }
 
-/* Comptes du groupe : dépôts, dettes, ce qu'on nous doit, projets */
-.fortune { margin: 4px 0 0; font-size: 16px; }
-.fortune small { font-size: 12px; }
-.acct { border-bottom: 1px dashed var(--line); padding: 4px 0 6px; }
-.acct-row { display: flex; align-items: center; gap: 6px; }
-.acct-main { flex: 1; display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 6px 0; text-align: left; color: inherit; font: inherit; cursor: pointer; min-width: 0; }
-.acct-ico { font-size: 22px; flex: none; }
+/* Comptes du groupe : la caisse en valeur, chaque compte présenté comme elle en plus petit */
+.purse-main { margin: 4px 0 10px; padding: 12px 10px 14px; border-radius: 16px; border: 2px solid rgba(154, 108, 18, .55);
+  background: linear-gradient(180deg, rgba(255, 236, 180, .55), rgba(255, 246, 220, .25)); box-shadow: inset 0 0 0 4px rgba(255, 255, 255, .35), 0 2px 8px rgba(80, 50, 10, .15); }
+.purse-title { display: flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--font-title); font-size: 18px; color: #8a5d0c; margin-bottom: 6px; }
+.purse-title .i { width: 20px; height: 20px; }
+.purse-main .coin-big { background: rgba(255, 255, 255, .6); border-color: rgba(154, 108, 18, .35); }
+.acct-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.purse-acct { padding: 8px 10px 10px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255, 255, 255, .18); }
+.purse-acct.dette { border-color: rgba(179, 48, 42, .35); background: rgba(179, 48, 42, .05); }
+.purse-acct.creance { border-color: rgba(79, 122, 58, .35); }
+.acct-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.acct-ico { font-size: 20px; flex: none; }
 .acct-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.acct-name small, .acct-bal small { font-size: 12px; color: var(--ink-soft); }
-.acct-bal { text-align: right; display: flex; flex-direction: column; flex: none; }
-.acct-bal b { font-size: 17px; }
-.acct .acct-bar { margin: 2px 0 4px; }
-.acct .acct-bar.full i { background: linear-gradient(90deg, #4f7a3a, #6f9d4f); }
-.accounts .acct + .hint { margin-top: 8px; }
+.acct-name small { font-size: 12px; color: var(--ink-soft); }
+.caisse.small { gap: 6px; }
+.caisse.small .coin-big { min-width: 62px; padding: 4px 8px; font-size: 12px; border-radius: 10px; }
+.caisse.small .coin-big b { font-size: 19px; }
+.purse-acct p { margin: 4px 0; }
+.purse-acct .add-row { margin-top: 6px; gap: 6px; }
+.acct-bar { margin: 6px 0 2px; height: 8px; }
+.acct-bar.full i { background: linear-gradient(90deg, #4f7a3a, #6f9d4f); }
+.fortune { margin: 10px 0 0; font-size: 16px; }
+.fortune small { font-size: 12px; }
