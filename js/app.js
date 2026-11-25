@@ -1360,11 +1360,24 @@ function mjSync(force = false) {
 
 // ----- Côté MJ : suivi en direct des fiches de chaque joueur -----
 const mjData = {};             // uid du joueur → personnages
+const mjLive = {};             // id → copie prêtée en cours de jeu (plus récente que la fiche reçue du joueur)
+const mjLiveWatches = new Map();
 const mjWatches = new Map();   // uid → arrêt du suivi
 let mjErr = '';
 function mjWatch() {
-  if (!isMJ()) { mjWatches.forEach((stop) => stop()); mjWatches.clear(); return; }
+  if (!isMJ()) { mjWatches.forEach((stop) => stop()); mjWatches.clear(); mjLiveWatches.forEach((stop) => stop()); mjLiveWatches.clear(); return; }
   const g = group.shared.id;
+  // Personnages prêtés : on suit la copie jouée pour voir PV et états en direct pendant la séance
+  const lentIds = new Set((G().persos || []).map((x) => x.id));
+  mjLiveWatches.forEach((stop, id) => { if (!lentIds.has(id)) { stop(); mjLiveWatches.delete(id); delete mjLive[id]; } });
+  lentIds.forEach((id) => {
+    if (mjLiveWatches.has(id)) return;
+    mjLiveWatches.set(id, cloud.watchPerso(g, id, (c) => {
+      mjLive[id] = c;
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+      if (ui.tab === 'mj' && !typing && !dlg.open) render();
+    }, () => { delete mjLive[id]; }));
+  });
   for (const owner of Object.keys(group.shared.members || {})) {
     if (mjWatches.has(owner)) continue;
     mjWatches.set(owner, cloud.watchMJPersos(g, owner, (list) => {
@@ -1403,13 +1416,15 @@ function mjCard(ch, player, owner) {
     <div class="mj-conds">${ch.music ? '<span class="cond-pill music">♪ Barde</span>' : ''}${conds.map((a) => `<span class="cond-pill">${a.cond}</span>`).join('') || '<span class="small muted">Aucun état</span>'}</div>
     ${weapons.length ? `<p class="small mj-line"><b>Armes</b> ${weapons.map((w) => `${esc(w.name)} (${esc(w.damage || '')})`).join(' · ')}</p>` : ''}
     <p class="small mj-line"><b>Compétences</b> ${skills.map((s) => `${esc(s.name)} ${s.value}`).join(' · ')}</p>
-    <div class="add-row"><button class="btn small" data-act="mjOpen" data-u="${owner}" data-id="${ch.id}">${icon('book')} Fiche complète</button><button class="btn small ghost" data-act="mjPrivate" data-u="${owner}" data-id="${ch.id}">🔒 Notes privées</button></div>
+    ${(G().persos || []).some((p) => p.id === ch.id) ? `<p class="small mj-lent">🎭 Prêté au groupe${mjLive[ch.id] && (mjLive[ch.id].updatedAt || 0) > 0 ? ' : les PV et états affichés suivent la partie' : ''}</p>` : ''}
+    <div class="add-row"><button class="btn small" data-act="mjOpen" data-u="${owner}" data-id="${ch.id}">${icon('book')} Fiche complète</button><button class="btn small ghost" data-act="mjPrivate" data-u="${owner}" data-id="${ch.id}">🔒 Notes privées</button>
+      ${(G().persos || []).some((p) => p.id === ch.id) ? `<button class="btn small ghost" data-act="mjUnlend" data-id="${ch.id}">Ne plus prêter</button>` : `<button class="btn small ghost" data-act="mjLend" data-u="${owner}" data-id="${ch.id}" title="Le joueur est absent : les autres pourront jouer son personnage (mode Jeu)">🎭 Prêter au groupe</button>`}</div>
   </article>`;
 }
 function viewMJ() {
   if (!isMJ()) return '<section class="card"><h2>Meneur de jeu</h2><p>Réservé au MJ du groupe.</p></section>';
   const sh = group.shared; const members = sh.members || {};
-  const cards = Object.entries(members).flatMap(([owner, name]) => (mjData[owner] || []).map((ch) => mjCard(ch, name, owner))).join('');
+  const cards = Object.entries(members).flatMap(([owner, name]) => (mjData[owner] || []).map((ch) => mjCard(mjMerged(ch), name, owner))).join('');
   const waiting = Object.entries(members).filter(([owner]) => owner !== cloud.uid() && !(mjData[owner] || []).length).map(([, name]) => name);
   return `<div class="grid mj">
     <section class="card span-all">
@@ -1421,7 +1436,13 @@ function viewMJ() {
     <div class="mj-grid span-all">${cards || '<p class="empty">Aucune fiche reçue pour l’instant.</p>'}</div>
   </div>`;
 }
-const mjChar = (owner, id) => (mjData[owner] || []).find((x) => x.id === id);
+const mjMerged = (ch) => {
+  const live = mjLive[ch.id];
+  if (!live || (live.updatedAt || 0) <= (ch.updatedAt || 0)) return ch;
+  const m = { ...live }; PRIVATE_KEYS.forEach((k) => { if (ch[k] !== undefined) m[k] = ch[k]; });
+  return m;
+};
+const mjChar = (owner, id) => { const ch = (mjData[owner] || []).find((x) => x.id === id); return ch && mjMerged(ch); };
 // Notes privées d'un personnage : notes secrètes, journal perso, carnet
 function mjPrivateDialog(owner, id) {
   const ch = mjChar(owner, id); if (!ch) return;
@@ -1454,8 +1475,9 @@ const lentHere = (c) => !!(group.shared && c?.lentTo === group.shared.id);
 let lendTimer = null;
 let lendWatch = null; let lendWatchId = null;
 let guestWatch = null;
+const lentDocs = new Set(); // mes personnages dont une copie prêtée existe dans le groupe (prêtés par moi ou par le MJ)
 function pushLent(c, now = false) {
-  if (!lentHere(c) || !cloud.user()) return;
+  if (!(lentHere(c) || lentDocs.has(c?.id)) || !cloud.user()) return;
   clearTimeout(lendTimer);
   const send = () => cloud.putPerso(group.shared.id, lendCopy(c), ownerName()).catch((e) => toast(media.error() || e.message));
   if (now) send(); else lendTimer = setTimeout(send, 2500);
@@ -1477,18 +1499,36 @@ function adoptLent(remote) {
   return true;
 }
 // Suivi en direct de mes personnages prêtés (appelé à chaque affichage ; ne fait rien si rien n'a changé)
+// Suit la copie prêtée de mon personnage affiché (si le MJ l'a prêtée sans moi, je reprends quand même les changements)
+let lentCheckKey = '';
 function watchLent() {
   const c = store.current();
-  const want = !ui.guest && lentHere(c) && cloud.user() ? `${group.shared.id}/${c.id}` : null;
-  if (want === lendWatchId) return;
-  lendWatch?.(); lendWatch = null; lendWatchId = want;
-  if (!want) return;
-  lendWatch = cloud.watchPerso(group.shared.id, c.id, (remote) => {
-    if (!adoptLent(remote)) return;
-    toast(`${remote.name} a été joué en ton absence : fiche mise à jour`);
-    const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
-    if (!typing && !dlg.open) render();
-  });
+  const want = !ui.guest && group.shared && cloud.user() && c ? `${group.shared.id}/${c.id}` : null;
+  if (want !== lendWatchId) {
+    lendWatch?.(); lendWatch = null; lendWatchId = want;
+    if (want) {
+      lendWatch = cloud.watchPerso(group.shared.id, c.id, (remote) => {
+        lentDocs.add(remote.id);
+        if (!adoptLent(remote)) return;
+        toast(`${remote.name} a été joué en ton absence : fiche mise à jour`);
+        const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+        if (!typing && !dlg.open) render();
+      }, () => { lentDocs.delete(c.id); });
+    }
+  }
+  // Une fois par session : mes autres personnages ont-ils été prêtés et joués ?
+  const key = group.shared && cloud.user() ? `${group.shared.id}/${cloud.uid()}` : '';
+  if (key && key !== lentCheckKey) {
+    lentCheckKey = key;
+    (async () => {
+      for (const x of store.list()) {
+        try {
+          const got = await cloud.getPerso(group.shared.id, x.id);
+          if (got) { lentDocs.add(x.id); if (adoptLent(got.c)) toast(`${got.c.name} a été joué en ton absence : fiche mise à jour`); }
+        } catch { /* hors ligne ou règle absente : on réessaiera au prochain lancement */ }
+      }
+    })();
+  }
 }
 async function lendToggle(c, on) {
   const g = group.shared; if (!g) return;
@@ -2588,6 +2628,27 @@ const A = {
   },
   mjClose() { ui.mjView = null; ui.tab = 'mj'; render(); window.scrollTo(0, 0); },
   mjPrivate(el) { mjPrivateDialog(el.dataset.u, el.dataset.id); },
+  // Le MJ prête la fiche d'un joueur absent (copie sans ses notes privées ; il la récupère à son retour)
+  mjLend(el) {
+    const ch = mjChar(el.dataset.u, el.dataset.id); const g = group.shared; if (!ch || !g) return;
+    const player = g.members?.[el.dataset.u] || 'son joueur';
+    confirmDialog('Prêter au groupe', `Prêter <b>${esc(ch.name)}</b> (joueur : ${esc(player)}) ? Les autres membres pourront le jouer à sa place, en mode Jeu seulement. Ses notes secrètes et son journal perso ne sont pas prêtés ; il récupérera tout ce qui s’est passé à son retour.`, 'Prêter', async () => {
+      try {
+        await cloud.putPerso(g.id, lendCopy(ch), player);
+        group.apply({ t: 'p:lend', perso: { id: ch.id, name: ch.name, owner: player, sub: [R.kinName(ch), R.profName(ch)].filter(Boolean).join(' · ') } }, `MJ (${store.current()?.name || 'MJ'})`);
+        toast(`${ch.name} est prêté au groupe`); render();
+      } catch (e) { toast(media.error() || e.message); }
+    });
+  },
+  mjUnlend(el) {
+    const g = group.shared; if (!g) return;
+    const p = (G().persos || []).find((x) => x.id === el.dataset.id);
+    confirmDialog('Ne plus prêter', `Arrêter le prêt de <b>${esc(p?.name || 'ce personnage')}</b> ? Ce qui a été joué reste sur sa copie : son joueur le récupérera en ouvrant l’appli.`, 'Arrêter le prêt', () => {
+      // La copie est gardée (le joueur doit encore récupérer la partie) ; elle disparaît seulement de la liste
+      group.apply({ t: 'p:unlend', id: el.dataset.id }, `MJ (${store.current()?.name || 'MJ'})`);
+      toast('Prêt arrêté'); render();
+    });
+  },
   mjResend() { mjSent.clear(); toast('Envoi de tes fiches au MJ…'); mjSync(true); },
   // Devenir MJ du groupe (ou céder la place)
   async mjClaim() {

@@ -78,6 +78,7 @@ export const MANUAL = [
   ['Meneur de jeu', `
     <p>Dans un groupe partagé, le MJ (connecté) touche <b>« 👑 Je suis le MJ »</b> dans la carte du groupe (onglet Groupe). Son compte devient le MJ ; lui seul peut ensuite « Ne plus être MJ ».</p>
     <p>Le MJ a un onglet <b>MJ</b> : toutes les fiches des joueurs, en direct (PV, PVol, états, armure, armes, compétences utiles, jets de mort). « 🔒 Notes privées » montre les notes secrètes, le carnet et le journal perso ; « Fiche complète » ouvre la fiche entière en lecture seule.</p>
+    <p>Un joueur est absent et n’a pas prêté son personnage ? Sur sa carte, <b>« 🎭 Prêter au groupe »</b> le prête à sa place (sans ses notes privées). Pendant la partie, sa carte suit les PV et états du personnage joué. « Ne plus prêter » arrête le prêt ; le joueur récupère tout ce qui s’est passé en rouvrant l’appli.</p>
     <p>Joueurs : dès qu’un MJ est désigné, vos fiches complètes lui sont envoyées automatiquement (notes secrètes et journal perso compris) ; la carte du groupe le rappelle. Les autres joueurs, eux, ne les voient jamais.</p>`],
   ['Joueur absent', `
     <p>Un joueur ne pourra pas venir ? Avant la séance, il ouvre <b>Mes personnages</b> (touche son nom en haut) et coche <b>« Prêter au groupe »</b>. Il faut un groupe partagé et être connecté.</p>
