@@ -55,8 +55,9 @@ export const MANUAL = [
     <p>Identité, faiblesse, apparence, souvenir, compagnons et notes libres. L’identité se modifie en mode libre.</p>`],
   ['Journal', `
     <p>Une page par séance : « Nouvelle session » crée la page du jour, numérotée. Donne-lui un titre, puis remplis ce que tu veux : <b>Résumé</b>, <b>PNJ rencontrés</b>, <b>Lieux</b>, <b>Butin</b>.</p>
+    <p><b>PNJ</b> : dans une session, tape le nom d’un PNJ et touche + : s’il existe déjà, il est relié à la session, sinon sa fiche est créée. Touche son nom pour compléter sa fiche (image, rôle, attitude, où le trouver, notes). L’onglet « PNJ » du journal montre toutes les fiches, avec les sessions où vous les avez croisés.</p>
     <p><b>Pistes</b> : ajoute les choses à faire ; celles qui ne sont pas cochées restent en haut du journal (« Pistes en cours »), quelle que soit la session.</p>
-    <p><b>Croquis</b> : « Ajouter une page de croquis » ouvre une feuille pour dessiner au stylet, au doigt ou à la souris (plans, cartes…). Trois couleurs, gomme, annuler, tout effacer et plein écran. Avec un stylet, la paume posée sur l’écran ne dessine pas et la pression épaissit le trait.</p>
+    <p><b>Croquis</b> : « Ajouter une page de croquis » ouvre une feuille pour dessiner au stylet, au doigt ou à la souris (plans, cartes…). Trois couleurs, gomme, annuler, tout effacer et <b>Plein écran</b> (une nouvelle page s’ouvre directement en plein écran). Avec un stylet, la paume posée sur l’écran ne dessine pas et la pression épaissit le trait.</p>
     <p>Sur iPad avec l’Apple Pencil, tu peux écrire à la main directement dans les champs de texte : l’iPad transforme l’écriture en texte. Sur Android, utilise le mode écriture manuscrite du clavier. La recherche fouille tout le journal.</p>`],
   ['Groupe', `
     <p><b>Groupe partagé</b> : touche « Partager ce groupe » pour obtenir un code, et donne-le aux autres joueurs. Chacun touche « Rejoindre avec un code » sur son téléphone (connecté avec son propre compte). Tout le monde voit et modifie la même caisse et le même matériel, en direct.</p>

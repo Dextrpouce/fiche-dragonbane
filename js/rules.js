@@ -270,6 +270,7 @@ export function upgradeCharacter(c) {
   c.tricks ??= [];
   c.log ??= [];
   c.journal ??= []; // journal de campagne : une page par session
+  c.npcs ??= []; // PNJ rencontrés (fiches reliées aux sessions)
   c.pendingMarks ??= 0;
   c.backpack ??= true;
   return c;
