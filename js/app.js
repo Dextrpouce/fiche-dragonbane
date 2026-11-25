@@ -2397,7 +2397,7 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
             <p class="small center dice-count ${kind || 'muted'}">${n === 1 ? '1 dé' : `${n} dés : on garde le plus ${net > 0 ? 'petit' : 'grand'}`}</p>`;
         })()}
         ${st.msg && !st.rolling && !st.dmgRolling ? `<p class="small center">${st.msg}</p>` : ''}
-        ${st.dmg ? dmgBox(st.dmg, st.dmgRolling, 'Dégâts') : ''}
+        ${st.dmg ? (st.heal ? `<div class="heal-wrap">${dmgBox(st.dmg, st.dmgRolling, 'PV récupérés')}</div>` : dmgBox(st.dmg, st.dmgRolling, 'Dégâts')) : ''}
       </div>
       ${canPush ? `<div class="push"><p class="small"><b>Forcer le jet ?</b> Relance en acceptant un état :</p><div class="conds small">${free.map((a) => `<button class="cond-chip" data-r="push" data-k="${a.key}"><b>${a.cond}</b><small>${a.key}</small></button>`).join('')}</div></div>` : ''}
       <div class="dlg-actions">
@@ -2407,7 +2407,7 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
       </div>
       ${weapon && r?.success ? `<div class="dmg-opts">${dmgOpts.map((o, i) => `<button class="btn gold ${i ? 'small' : ''}" data-r="dmg" data-o="${i}" ${(o.wp && c.wp.cur < o.wp) || st.dmgRolling ? 'disabled' : ''}>${esc(o.label)}</button>`).join('')}</div>` : ''}
     </div>`;
-    if (st.rolling) spin(dlg.querySelectorAll('.dice.rolling .die b'), 20, DICE_MS, () => { st.rolling = false; draw(); });
+    if (st.rolling) spin(dlg.querySelectorAll('.dice.rolling .die b'), 20, DICE_MS, () => { st.rolling = false; if (st.then) { const go = st.then; st.then = null; go(); } draw(); });
     if (st.dmgRolling) spin(dlg.querySelectorAll('.dmg.rolling [data-max]'), 6, DMG_MS, () => { st.dmgRolling = false; draw(); });
   };
   const roll = () => {
@@ -2459,6 +2459,20 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
   dlg.onclose = () => { dlg.onclose = null; render(); };
   draw();
   if (!dlg.open) dlg.showModal();
+}
+
+// Récupération (repos, soins) : les dés roulent, puis le résultat. rolls : [{ label, res: R.rollExpr(…) }]
+function healRoll(title, rolls, msg = '') {
+  const boxes = (rolling) => rolls.map((r) => dmgBox(r.res, rolling, r.label, true)).join('');
+  openDialog({
+    title,
+    body: `<div class="dmg-wrap heal-wrap">${boxes(true)}</div><p class="small center heal-msg" hidden>${msg}</p>`,
+    actions: [closeBtn],
+    onOpen: (f) => {
+      const wrap = f.querySelector('.dmg-wrap');
+      spin(wrap.querySelectorAll('[data-max]'), 6, DMG_MS, () => { wrap.innerHTML = boxes(false); f.querySelector('.heal-msg').hidden = false; });
+    },
+  });
 }
 
 function freeRoll(expr) {
@@ -3258,7 +3272,11 @@ const A = {
   deathRoll() {
     const c = C();
     openRoll({ title: 'Jet de mort', target: c.attrs.CON, attr: 'CON', noPush: true, once: true, note: `Réussites ${c.death.succ}/3 · Échecs ${c.death.fail}/3 · un Dragon compte double, un Démon aussi`, onResult: (r, st) => {
-      st.msg = deathApply(c, r, R.d(6));
+      const heal = R.rollExpr('D6');
+      const before = c.death.succ;
+      st.msg = deathApply(c, r, heal.total);
+      // Trois réussites : le D6 des PV récupérés roule à son tour
+      if (before < 3 && c.death.succ === 0 && c.hp.cur > 0) st.then = () => { st.dmg = heal; st.heal = true; st.dmgRolling = true; };
       commit(false);
     } });
   },
@@ -3273,7 +3291,10 @@ const A = {
       openDialog({
         title: 'Hors de danger',
         body: `<p>Trois réussites ! Lance un <b>D6</b> : combien de PV récupères-tu ?</p><div class="add-row center-row">${[1, 2, 3, 4, 5, 6].map((h) => `<button type="button" class="btn" data-h="${h}">${h}</button>`).join('')}</div>`,
-        actions: [cancel, { label: `${icon('d20')} Lancer pour moi`, cls: 'ghost', onClick: () => { const h = R.d(6); toast(deathApply(c, r, h).replace(/<[^>]+>/g, '')); logEntry(c, `Jet de mort (dés) : ${label}`); commit(); } }],
+        actions: [cancel, { label: `${icon('d20')} Lancer pour moi`, cls: 'ghost', onClick: () => {
+          const res = R.rollExpr('D6'); const msg = deathApply(c, r, res.total); logEntry(c, `Jet de mort (dés) : ${label}`); commit();
+          setTimeout(() => healRoll('Hors de danger', [{ label: 'PV récupérés', res }], msg));
+        } }],
         onOpen: (f) => f.querySelectorAll('[data-h]').forEach((b) => { b.onclick = () => { dlg.close(); toast(deathApply(c, r, +b.dataset.h).replace(/<[^>]+>/g, '')); logEntry(c, `Jet de mort (dés) : ${label}`); commit(); }; }),
       });
       return;
@@ -3292,7 +3313,9 @@ const A = {
       return;
     }
     if (r === 'round') {
-      const n = R.d(6); c.wp.cur = Math.min(R.maxWP(c), c.wp.cur + n); c.rests.round = true; commit(); toast(`Repos de round : +${n} PVol (D6 = ${n})`);
+      const res = R.rollExpr('D6'); const before = c.wp.cur;
+      c.wp.cur = Math.min(R.maxWP(c), c.wp.cur + res.total); c.rests.round = true; commit();
+      healRoll('Repos de round', [{ label: 'PVol', res }], `+${c.wp.cur - before} PVol (${c.wp.cur}/${R.maxWP(c)})`);
     }
     if (r === 'stretch') {
       const conds = R.ATTRS.filter((a) => c.conditions[a.key]);
@@ -3302,12 +3325,15 @@ const A = {
           ${conds.length ? F.select('cond', 'État à guérir', conds[0].key, [...conds.map((a) => [a.key, a.cond]), ['', 'Aucun']], 'full') : '<p class="small muted">Aucun état à guérir.</p>'}
           ${F.check('tended', 'Soigné par quelqu’un (jet de Soins réussi) : 2D6 PV', false)}`,
         actions: [cancel, { label: 'Se reposer', primary: true, onClick: (f) => {
-          const h = f.tended.checked ? R.d(6) + R.d(6) : R.d(6); const w = R.d(6);
+          const hr = R.rollExpr(f.tended.checked ? '2D6' : 'D6'); const wr = R.rollExpr('D6');
+          const hp0 = c.hp.cur; const wp0 = c.wp.cur;
           c.rests.stretch = true;
-          c.hp.cur = Math.min(R.maxHP(c), c.hp.cur + h); c.wp.cur = Math.min(R.maxWP(c), c.wp.cur + w);
+          c.hp.cur = Math.min(R.maxHP(c), c.hp.cur + hr.total); c.wp.cur = Math.min(R.maxWP(c), c.wp.cur + wr.total);
+          const cured = f.cond?.value ? R.ATTR[f.cond.value]?.cond : '';
           if (f.cond?.value) c.conditions[f.cond.value] = false;
           if (c.hp.cur > 0) c.death = { succ: 0, fail: 0 };
-          commit(); toast(`Repos court : +${h} PV, +${w} PVol`);
+          commit();
+          setTimeout(() => healRoll('Repos court', [{ label: 'PV', res: hr }, { label: 'PVol', res: wr }], `+${c.hp.cur - hp0} PV (${c.hp.cur}/${R.maxHP(c)}) · +${c.wp.cur - wp0} PVol (${c.wp.cur}/${R.maxWP(c)})${cured ? ` · ${esc(cured)} guéri` : ''}`));
         } }],
       });
     }

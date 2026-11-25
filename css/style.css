@@ -855,3 +855,6 @@ body.no-scroll { overflow: hidden; }
 .dd-dragon { background: #2e7d32; color: #fff; border-color: #1f5e23; }
 .dd-demon { background: #a8281d; color: #fff; border-color: #7c1b13; }
 .dd-btn:hover { filter: brightness(1.08); }
+.heal-wrap { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.heal-msg { font-weight: 600; }
+.heal-wrap .dmg-total { color: var(--green); }
