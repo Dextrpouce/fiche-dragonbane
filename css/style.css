@@ -753,3 +753,13 @@ body.no-scroll { overflow: hidden; }
 .j-secret textarea { background: rgba(60, 40, 90, .06); border-style: dashed; }
 .j-secret label small { font-family: var(--font-body); text-transform: none; letter-spacing: 0; color: var(--ink-soft); margin-left: 6px; }
 .npc-secret { color: #5b4a78; font-style: italic; }
+/* Journal : lieux */
+.place-main { display: flex; flex-direction: column; gap: 6px; width: 100%; border: 0; background: none; padding: 0; text-align: left; color: var(--ink); font: inherit; cursor: pointer; }
+.place-img { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; background: center / cover no-repeat; border: 1px solid var(--line); }
+.place-photo { width: 130px; height: 100px; }
+.place-npcs { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 8px; }
+/* Journal partagé : qui a modifié quoi */
+.j-ed { font-family: var(--font-body); text-transform: none; letter-spacing: 0; font-size: 11px; color: var(--teal); margin-left: 6px; font-weight: 400; }
+.npc-card > .j-ed { display: block; margin: 6px 0 0; }
+.j-ed-row { margin-top: -6px; }
+.j-hist .log-row { grid-template-columns: 74px 1fr; }

@@ -602,8 +602,9 @@ function shareCard() {
 
 function viewGroupe(c) {
   const g = G();
-  const lastUndo = g.log.find((e) => e.undo && !e.undone);
-  const shown = ui.logAll ? g.log : g.log.slice(0, 25);
+  const glog = g.log.filter((e) => e.cat !== 'j'); // le journal de campagne a son propre historique
+  const lastUndo = glog.find((e) => e.undo && !e.undone);
+  const shown = ui.logAll ? glog : glog.slice(0, 25);
   const log = shown.map((e) => `<div class="log-row ${e.undone ? 'undone' : ''} ${e.pending ? 'pending' : ''}">
       <span class="log-date">${fmtWhen(e.date)}</span>
       <span class="log-txt">${e.pending ? '⏳ ' : ''}${esc(e.text ?? e.label ?? '')}${e.who ? ` <span class="muted">· ${esc(e.who)}</span>` : ''}</span>
@@ -664,7 +665,7 @@ function viewGroupe(c) {
     <section class="card span-all journal">
       <h2>Journal</h2>
       ${log}
-      ${g.log.length > 25 ? `<div class="add-row center-row"><button class="btn ghost small" data-act="gLogAll">${ui.logAll ? 'Réduire' : `Tout afficher (${g.log.length})`}</button></div>` : ''}
+      ${glog.length > 25 ? `<div class="add-row center-row"><button class="btn ghost small" data-act="gLogAll">${ui.logAll ? 'Réduire' : `Tout afficher (${glog.length})`}</button></div>` : ''}
     </section>
   </div>`;
 }
@@ -1308,10 +1309,12 @@ function viewCarnet(c) {
 const todayISO = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const fmtDay = (iso) => { const d = iso ? new Date(`${iso}T12:00`) : null; return d && !isNaN(d) ? d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; };
 const jShared = () => !!group.shared;
+// « ✎ Jorunda · 25 nov., 14:02 » : dernier auteur d'un champ (journal partagé)
+const jEd = (o, f) => (group.shared && o?.ed?.[f] ? `<small class="j-ed" title="Dernière modification">✎ ${esc(o.ed[f].by)} · ${fmtWhen(o.ed[f].at)}</small>` : '');
 const J = () => (jShared() ? group.state : C());
 function jApply(op, rerender = true) {
   try {
-    if (jShared()) { group.apply(op, author()); if (rerender) render(); } else { applyJournalOp(C(), op); commit(rerender); }
+    if (jShared()) { group.apply({ ...op, by: author(), at: Date.now() }, author()); if (rerender) render(); } else { applyJournalOp(C(), op); commit(rerender); }
     return true;
   } catch (e) { toast(e.message); return false; }
 }
@@ -1329,7 +1332,7 @@ function jSave(el, now) {
   if (now) save(); else jTimers.set(el, setTimeout(save, 1200));
 }
 
-const sessionText = (s, j) => [s.title, s.summary, s.npcs, s.places, s.loot, C()?.secret?.s?.[s.id], ...(s.todos || []).map((t) => t.t), ...(s.npcIds || []).map((id) => npcOf(j, id)?.name)].join(' ');
+const sessionText = (s, j) => [s.title, s.summary, s.npcs, s.places, s.loot, C()?.secret?.s?.[s.id], ...(s.todos || []).map((t) => t.t), ...(s.npcIds || []).map((id) => npcOf(j, id)?.name), ...(s.placeIds || []).map((id) => placeOf(j, id)?.name)].join(' ');
 const J_FIELDS = [['places', 'Lieux', 'Villages, ruines, chemins…', 3], ['loot', 'Butin et récompenses', 'Pièces, objets trouvés, promesses…', 3]];
 // PNJ : registre du journal (j.npcs), relié aux sessions (session.npcIds)
 const NPC_ATT = { ami: ['Allié', 'good'], neutre: ['Neutre', ''], hostile: ['Hostile', 'bad'], inconnu: ['Inconnu', 'muted'] };
@@ -1353,6 +1356,7 @@ function npcCards(j) {
       ${n.place ? `<p class="small npc-place">📍 ${esc(n.place)}</p>` : ''}
       ${n.notes ? `<p class="small npc-notes">${esc(n.notes)}</p>` : ''}
       ${group.shared && C().secret.n[n.id] ? `<p class="small npc-notes npc-secret">🔒 ${esc(C().secret.n[n.id])}</p>` : ''}
+      ${jEd(n, 'fiche')}
       ${seen.length ? `<div class="npc-seen"><small class="muted">Rencontré :</small>${seen.map((s) => `<button class="chip" data-act="jGoSession" data-id="${s.id}" title="${esc(s.title || '')}">S${s.n}</button>`).join('')}</div>` : ''}
     </article>`;
   }).join('')}</div>`;
@@ -1436,16 +1440,118 @@ function npcDialog(npc, linkTo = null) {
   });
 }
 
+// Lieux importants : registre du journal (j.lieux), reliés aux sessions (session.placeIds) et aux PNJ (lieu.npcIds)
+const PLACE_KINDS = { ville: ['Ville', '🏰'], village: ['Village', '🏘️'], auberge: ['Auberge', '🍺'], donjon: ['Donjon, ruine', '🗝️'], nature: ['Nature', '🌲'], autre: ['Autre', '📍'] };
+const placeOf = (j, id) => j.lieux.find((l) => l.id === id);
+const placeSessions = (j, id) => j.journal.filter((s) => (s.placeIds || []).includes(id)).sort((a, b) => a.n - b.n);
+const placeImg = (l) => (l.photo && media.get(l.photo)?.image) || '';
+function placeCards(j) {
+  if (!j.lieux.length) return '<div class="empty">Aucun lieu pour l’instant. Crée-les ici ou depuis une session (« Lieux visités »).</div>';
+  const sec = group.shared ? C().secret.l : {};
+  return `<div class="npc-grid">${[...j.lieux].sort((a, b) => a.name.localeCompare(b.name, 'fr')).map((l) => {
+    const [kind, ico] = PLACE_KINDS[l.kind] || PLACE_KINDS.autre;
+    const seen = placeSessions(j, l.id);
+    const img = placeImg(l);
+    const npcs = (l.npcIds || []).map((id) => npcOf(j, id)).filter(Boolean);
+    return `<article class="npc-card place-card" data-search="${esc(R.norm([l.name, kind, l.where, l.notes, ...npcs.map((n) => n.name)].join(' ')))}">
+      <button class="place-main" data-act="placeOpen" data-id="${l.id}">
+        ${img ? `<span class="place-img" style="background-image:url('${img}')"></span>` : ''}
+        <span class="npc-txt"><b>${ico} ${esc(l.name)}</b><small>${esc(kind)}${l.where ? ` · ${esc(l.where)}` : ''}</small></span>
+      </button>
+      ${l.notes ? `<p class="small npc-notes">${esc(l.notes)}</p>` : ''}
+      ${sec[l.id] ? `<p class="small npc-notes npc-secret">🔒 ${esc(sec[l.id])}</p>` : ''}
+      ${jEd(l, 'fiche')}
+      ${npcs.length ? `<div class="npc-seen"><small class="muted">PNJ sur place :</small>${npcs.map((n) => `<button class="chip" data-act="npcOpen" data-id="${n.id}">${esc(n.name)}</button>`).join('')}</div>` : ''}
+      ${seen.length ? `<div class="npc-seen"><small class="muted">Visité :</small>${seen.map((s) => `<button class="chip" data-act="jGoSession" data-id="${s.id}" title="${esc(s.title || '')}">S${s.n}</button>`).join('')}</div>` : ''}
+    </article>`;
+  }).join('')}</div>`;
+}
+// Fiche d'un lieu (création si lieu est null ; linkTo : session à laquelle le relier)
+function placeDialog(lieu, linkTo = null) {
+  const j = J(); const isNew = !lieu;
+  const cur = lieu ? { ...lieu } : { name: '', kind: 'village', where: '', notes: '', npcIds: [] };
+  const img = lieu ? placeImg(lieu) : '';
+  const seen = lieu ? placeSessions(j, lieu.id) : [];
+  openDialog({
+    title: isNew ? 'Nouveau lieu' : cur.name,
+    cls: 'npc-dlg',
+    body: `<div class="npc-dlg-top">
+        <div class="npc-photo-col">
+          <button type="button" class="npc-photo place-photo" data-npc-photo title="${img ? 'Voir en grand' : 'Ajouter une image (plan, illustration…)'}">${img ? `<img src="${img}" alt="">` : `<span>${icon('plus')}<small>Image</small></span>`}</button>
+          <div class="npc-photo-btns">
+            ${canCamera() ? `<button type="button" class="btn small ghost" data-npc-pick="cam" title="Prendre une photo">${icon('camera')}</button>` : ''}
+            <button type="button" class="btn small ghost" data-npc-pick="file" title="Choisir une image">${icon('plus')}</button>
+          </div>
+        </div>
+        <div class="fields">
+          ${F.text('name', 'Nom', cur.name, 'full', 'autofocus placeholder="Ex. Le Gué-aux-Saules"')}
+          ${F.select('kind', 'Type', cur.kind, Object.entries(PLACE_KINDS).map(([k, [l, i]]) => [k, `${i} ${l}`]), 'full')}
+        </div>
+      </div>
+      <div class="fields">
+        ${F.text('where', 'Où, comment y aller', cur.where, 'full', 'placeholder="Ex. Deux jours au nord, après le pont"')}
+        ${F.area('notes', group.shared ? 'Notes (partagées avec le groupe)' : 'Notes', cur.notes)}
+        ${group.shared ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label><textarea name="secret" rows="2">${esc(C().secret.l[lieu?.id] || '')}</textarea></div>` : ''}
+      </div>
+      ${j.npcs.length ? `<p class="small"><b>PNJ sur place</b></p><div class="place-npcs">${j.npcs.map((n) => `<label class="check"><input type="checkbox" name="npc_${n.id}" ${(cur.npcIds || []).includes(n.id) ? 'checked' : ''}><span>${esc(n.name)}</span></label>`).join('')}</div>` : ''}
+      ${seen.length ? `<p class="small muted">Visité : ${seen.map((s) => `Session ${s.n}${s.title ? ` (${esc(s.title)})` : ''}`).join(', ')}</p>` : ''}
+      ${img ? '<label class="check"><input type="checkbox" name="noPhoto"><span>Retirer l’image</span></label>' : ''}
+      <div class="npc-zoom" hidden><img alt=""><small>Touche pour fermer</small></div>`,
+    actions: [
+      ...(!isNew ? [{ label: icon('trash'), cls: 'ghost', onClick: () => {
+        setTimeout(() => confirmDialog('Supprimer le lieu', `Supprimer la fiche de ${esc(lieu.name)} ? Il sera retiré des sessions où il apparaît.`, 'Supprimer', () => {
+          if (lieu.photo) media.remove(lieu.photo);
+          jApply({ t: 'j:placeDel', pid: lieu.id });
+        }));
+      } }, 'spacer'] : []),
+      cancel,
+      { label: 'Enregistrer', primary: true, onClick: (f) => {
+        const name = f.name.value.trim();
+        if (!name) { toast('Donne un nom au lieu'); return false; }
+        const v = { name, kind: f.kind.value, where: f.where.value.trim(), notes: f.notes.value.trim(), npcIds: j.npcs.filter((n) => f[`npc_${n.id}`]?.checked).map((n) => n.id) };
+        if (f.noPhoto?.checked) {
+          if (cur.photo) media.remove(cur.photo);
+          v.photo = null;
+        } else if (f.dataset.photo) {
+          const id = cur.photo || R.uid();
+          media.put({ id, image: f.dataset.photo }, C().id).catch(() => toast(media.error() || 'Image non envoyée'));
+          v.photo = id;
+        }
+        const pid = lieu?.id || R.uid();
+        if (f.secret) { const c = C(); const t = f.secret.value.trim(); if (t) c.secret.l[pid] = t; else delete c.secret.l[pid]; c.updatedAt = Date.now(); store.save(); }
+        if (isNew) jApply({ t: 'j:placeAdd', place: { id: pid, ...v }, sid: linkTo });
+        else jApply({ t: 'j:placeSet', pid, v });
+      } },
+    ],
+    onOpen: (f) => {
+      const pick = (camera) => chooseImage(camera, async (file) => {
+        try {
+          f.dataset.photo = await readPortrait(file, 1000, 1000, 180000); // un plan doit rester lisible
+          f.querySelector('[data-npc-photo]').innerHTML = `<img src="${f.dataset.photo}" alt="">`;
+        } catch (e) { toast(e.message || 'Image illisible'); }
+      });
+      f.querySelectorAll('[data-npc-pick]').forEach((b) => { b.onclick = () => pick(b.dataset.npcPick === 'cam'); });
+      const zoom = f.querySelector('.npc-zoom');
+      f.querySelector('[data-npc-photo]').onclick = () => {
+        const src = f.dataset.photo || img;
+        if (!src) { pick(canCamera()); return; }
+        zoom.querySelector('img').src = src; zoom.hidden = false;
+      };
+      zoom.onclick = () => { zoom.hidden = true; };
+    },
+  });
+}
+
 let sketchCtl = null; // zone de dessin affichée
 let sketchWatch = null; // suivi en direct du croquis (groupe)
 
 function viewJournal(c) {
   const j = J(); const list = j.journal; const sh = group.shared;
   // Journal partagé : bandeau, erreurs d'images, et proposition de verser son journal personnel
-  const mine = sh ? { s: c.journal.filter((s) => !list.some((x) => x.id === s.id)).length, n: c.npcs.filter((n) => !j.npcs.some((x) => x.id === n.id)).length } : null;
+  const mine = sh ? { s: c.journal.filter((s) => !list.some((x) => x.id === s.id)).length, n: c.npcs.filter((n) => !j.npcs.some((x) => x.id === n.id)).length + c.lieux.filter((l) => !j.lieux.some((x) => x.id === l.id)).length } : null;
   const shareInfo = sh ? `<p class="small j-shared">${icon('users')} Journal partagé avec le groupe « ${esc(sh.name)} » : tout le monde le voit et le complète.</p>
       ${media.error() ? `<p class="small bad">${esc(media.error())}</p>` : ''}
-      ${mine.s || mine.n ? `<button class="btn ghost small block" data-act="jImport">${icon('upload')} Verser mon journal perso (${mine.s} session${mine.s > 1 ? 's' : ''}, ${mine.n} PNJ)</button>` : ''}` : '';
+      ${mine.s || mine.n ? `<button class="btn ghost small block" data-act="jImport">${icon('upload')} Verser mon journal perso (${mine.s} session${mine.s > 1 ? 's' : ''}, ${mine.n} fiche${mine.n > 1 ? 's' : ''} PNJ et lieux)</button>` : ''}` : '';
   if (!list.length) {
     return `<section class="card journal-empty">
       <h2>Journal de campagne</h2>
@@ -1461,7 +1567,33 @@ function viewJournal(c) {
   const sessions = list.map((s) => `<button class="j-item ${s === cur ? 'on' : ''}" data-act="jOpen" data-id="${s.id}" data-search="${esc(R.norm(sessionText(s, j)))}">
       <b>Session ${s.n}</b><span>${esc(s.title || 'Sans titre')}</span><small>${fmtDay(s.date)}${s.sketch ? ' · ✎' : ''}</small>
     </button>`).join('');
-  const jTabs = `<div class="filters j-tabs"><button class="chip ${ui.jView !== 'npcs' ? 'on' : ''}" data-act="jView" data-v="sessions">Sessions (${list.length})</button><button class="chip ${ui.jView === 'npcs' ? 'on' : ''}" data-act="jView" data-v="npcs">PNJ (${j.npcs.length})</button></div>`;
+  const jTabs = `<div class="filters j-tabs"><button class="chip ${ui.jView !== 'npcs' ? 'on' : ''}" data-act="jView" data-v="sessions">Sessions (${list.length})</button><button class="chip ${ui.jView === 'npcs' ? 'on' : ''}" data-act="jView" data-v="npcs">PNJ (${j.npcs.length})</button><button class="chip ${ui.jView === 'lieux' ? 'on' : ''}" data-act="jView" data-v="lieux">Lieux (${j.lieux.length})</button>${sh ? `<button class="chip ${ui.jView === 'hist' ? 'on' : ''}" data-act="jView" data-v="hist">Historique</button>` : ''}</div>`;
+  if (ui.jView === 'hist' && sh) {
+    const all = (j.log || []).filter((e) => e.cat === 'j');
+    const rows = (ui.logAll ? all : all.slice(0, 60)).map((e) => `<div class="log-row ${e.pending ? 'pending' : ''}">
+        <span class="log-date">${fmtWhen(e.date)}</span>
+        <span class="log-txt">${e.pending ? '⏳ ' : ''}${esc(e.text)} <span class="muted">· ${esc(e.who || '')}</span></span>
+      </div>`).join('') || '<div class="empty">Aucune modification pour l’instant.</div>';
+    return `<div class="grid journal">
+      <section class="card j-list"><h2>Journal</h2>${shareInfo}${jTabs}
+        <p class="small muted">Qui a modifié quoi dans le journal du groupe, du plus récent au plus ancien. Plusieurs corrections d’un même texte par la même personne en moins de 10 minutes comptent pour une ligne. Tes notes secrètes n’y figurent jamais.</p>
+      </section>
+      <section class="card j-hist"><h2>Historique du journal</h2>${rows}
+        ${all.length > 60 ? `<div class="add-row center-row"><button class="btn ghost small" data-act="gLogAll">${ui.logAll ? 'Réduire' : `Tout afficher (${all.length})`}</button></div>` : ''}
+      </section>
+    </div>`;
+  }
+  if (ui.jView === 'lieux') {
+    return `<div class="grid journal">
+      <section class="card j-list">
+        <h2>Journal</h2>${shareInfo}${jTabs}
+        <button class="btn block" data-act="placeNew">${icon('plus')} Nouveau lieu</button>
+        <input class="lib-search" id="jSearch" type="search" placeholder="Rechercher un lieu…" value="${esc(ui.jSearch || '')}">
+        <p class="small muted">Chaque lieu a sa fiche : type, où il se trouve, notes, image (plan, illustration), les PNJ qu’on y trouve et les sessions où vous y êtes passés.</p>
+      </section>
+      <section class="card j-main-npcs"><h2>Lieux importants</h2>${placeCards(j)}<p class="empty j-none" hidden>Rien ne correspond.</p></section>
+    </div>`;
+  }
   if (ui.jView === 'npcs') {
     return `<div class="grid journal">
       <section class="card j-list">
@@ -1495,7 +1627,8 @@ function viewJournal(c) {
           <button class="icon-btn small" data-act="jDelete" aria-label="Supprimer cette session">${icon('trash')}</button>
         </div>
         <div class="j-fields">
-          <div class="field full"><label>Résumé</label>${jField(sid, 'summary', cur.summary, 'rows="6" placeholder="Ce qui s’est passé…"', true)}</div>
+          ${jEd(cur, 'title') || jEd(cur, 'date') ? `<div class="full j-ed-row">${jEd(cur, 'title')}</div>` : ''}
+          <div class="field full"><label>Résumé ${jEd(cur, 'summary')}</label>${jField(sid, 'summary', cur.summary, 'rows="6" placeholder="Ce qui s’est passé…"', true)}</div>
           <div class="field j-npcs"><label>PNJ rencontrés</label>
             <div class="npc-chips">${(cur.npcIds || []).map((id) => npcOf(j, id)).filter(Boolean).map((n) => `<span class="npc-chip att-${n.attitude || 'inconnu'}">
                 <button data-act="npcOpen" data-id="${n.id}">${npcFace(n, 'mini')}${esc(n.name)}</button><button class="x" data-act="jNpcUnlink" data-id="${n.id}" aria-label="Retirer de la session">×</button></span>`).join('')}</div>
@@ -1503,7 +1636,14 @@ function viewJournal(c) {
             <datalist id="npcNames">${j.npcs.filter((n) => !(cur.npcIds || []).includes(n.id)).map((n) => `<option value="${esc(n.name)}">`).join('')}</datalist>
             ${cur.npcs ? `<label class="small muted">Notes</label>${jField(sid, 'npcs', cur.npcs, 'rows="2"', true)}` : ''}
           </div>
-          ${J_FIELDS.map(([k, label, ph, rows]) => `<div class="field"><label>${label}</label>${jField(sid, k, cur[k], `rows="${rows}" placeholder="${ph}"`, true)}</div>`).join('')}
+          <div class="field j-npcs j-places"><label>Lieux visités</label>
+            <div class="npc-chips">${(cur.placeIds || []).map((id) => placeOf(j, id)).filter(Boolean).map((l) => `<span class="npc-chip">
+                <button data-act="placeOpen" data-id="${l.id}">${(PLACE_KINDS[l.kind] || PLACE_KINDS.autre)[1]} ${esc(l.name)}</button><button class="x" data-act="jPlaceUnlink" data-id="${l.id}" aria-label="Retirer de la session">×</button></span>`).join('')}</div>
+            <form class="quick-add" data-form="jPlace"><input name="n" list="placeNames" autocomplete="off" placeholder="Nom du lieu (déjà connu ou nouveau)"><button class="btn small" type="submit">${icon('plus')}</button></form>
+            <datalist id="placeNames">${j.lieux.filter((l) => !(cur.placeIds || []).includes(l.id)).map((l) => `<option value="${esc(l.name)}">`).join('')}</datalist>
+            ${cur.places ? `<label class="small muted">Notes</label>${jField(sid, 'places', cur.places, 'rows="2"', true)}` : ''}
+          </div>
+          <div class="field"><label>Butin et récompenses ${jEd(cur, 'loot')}</label>${jField(sid, 'loot', cur.loot, 'rows="3" placeholder="Pièces, objets trouvés, promesses…"', true)}</div>
           ${sh ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label>${bind(`secret.s.${sid}`, c.secret.s[sid] || '', 'area', 'rows="3" placeholder="Ce que tu gardes pour toi : soupçons, plans, secrets de ton personnage…"')}</div>` : ''}
         </div>
         <h3>Pistes et choses à faire</h3>
@@ -2257,6 +2397,9 @@ const A = {
   jView(el) { ui.jView = el.dataset.v; ui.jSearch = ''; render(); },
   jGoSession(el) { ui.jView = 'sessions'; ui.jSession = el.dataset.id; ui.jSearch = ''; render(); document.querySelector('.j-page')?.scrollIntoView({ block: 'start' }); },
   npcNew() { npcDialog(null); },
+  placeNew() { placeDialog(null); },
+  placeOpen(el) { const l = placeOf(J(), el.dataset.id); if (l) placeDialog(l); },
+  jPlaceUnlink(el) { jApply({ t: 'j:placeUnlink', sid: ui.jSession, pid: el.dataset.id }); },
   npcOpen(el) { const n = npcOf(J(), el.dataset.id); if (n) npcDialog(n); },
   jNpcUnlink(el) { jApply({ t: 'j:npcUnlink', sid: ui.jSession, nid: el.dataset.id }); },
   jOpen(el) { ui.jSession = el.dataset.id; render(); if (innerWidth < 720) document.querySelector('.j-page')?.scrollIntoView({ block: 'start' }); },
@@ -2280,14 +2423,14 @@ const A = {
   // Verser son journal personnel dans celui du groupe (images et croquis copiés aussi)
   jImport() {
     const c = C();
-    confirmDialog('Verser mon journal', `Copier tes ${c.journal.length} session(s) et ${c.npcs.length} PNJ dans le journal du groupe ? Les autres joueurs les verront. Ton journal personnel reste intact.`, 'Verser', async () => {
+    confirmDialog('Verser mon journal', `Copier tes ${c.journal.length} session(s), ${c.npcs.length} PNJ et ${c.lieux.length} lieu(x) dans le journal du groupe ? Les autres joueurs les verront. Ton journal personnel reste intact.`, 'Verser', async () => {
       toast('Copie des images et croquis…');
-      const ids = [...c.journal.map((s) => s.sketch), ...c.npcs.map((n) => n.photo)].filter(Boolean);
+      const ids = [...c.journal.map((s) => s.sketch), ...c.npcs.map((n) => n.photo), ...c.lieux.map((l) => l.photo)].filter(Boolean);
       let failed = 0;
       for (const id of ids) { try { await media.copyToGroup(id); } catch { failed++; } }
       // Une image ou un croquis n'a pas pu être copié : on ne verse rien (on pourra réessayer, rien n'est perdu)
       if (failed) { toast(`Rien n’a été versé : ${failed} image(s) ou croquis non copiés (${media.error() || 'erreur'}). Réessaie une fois connecté.`); render(); return; }
-      jApply({ t: 'j:import', journal: c.journal, npcs: c.npcs });
+      jApply({ t: 'j:import', journal: c.journal, npcs: c.npcs, lieux: c.lieux });
       toast('Journal versé dans le groupe');
     });
   },
@@ -2732,6 +2875,16 @@ $app.addEventListener('submit', (e) => {
       : jApply({ t: 'j:npcAdd', sid: ui.jSession, npc: { id: R.uid(), name, role: '', place: '', attitude: 'inconnu', notes: '' } });
     if (ok) toast(known ? `${known.name} ajouté à la session` : `Nouveau PNJ : ${name} — touche son nom pour compléter sa fiche`);
     setTimeout(() => document.querySelector('form[data-form="jNpc"] input')?.focus());
+    return;
+  }
+  if (form.dataset.form === 'jPlace') {
+    e.preventDefault();
+    const name = form.n.value.trim(); if (!name) return;
+    const known = J().lieux.find((x) => R.norm(x.name) === R.norm(name));
+    const ok = known ? jApply({ t: 'j:placeLink', sid: ui.jSession, pid: known.id })
+      : jApply({ t: 'j:placeAdd', sid: ui.jSession, place: { id: R.uid(), name, kind: 'autre', where: '', notes: '', npcIds: [] } });
+    if (ok) toast(known ? `${known.name} ajouté à la session` : `Nouveau lieu : ${name} — touche son nom pour compléter sa fiche`);
+    setTimeout(() => document.querySelector('form[data-form="jPlace"] input')?.focus());
     return;
   }
   if (form.dataset.form === 'jTodo') {

@@ -59,7 +59,7 @@ function take(m, x) {
 const fail = (msg) => { throw Object.assign(new Error(msg), { invalid: true }); };
 const qtyTxt = (q) => (n(q) > 1 ? ` ×${q}` : '');
 
-export const EMPTY = () => ({ game: GAME, money: { or: 0, argent: 0, cuivre: 0 }, carriers: [], accounts: [], notes: '', log: [], journal: [], npcs: [] });
+export const EMPTY = () => ({ game: GAME, money: { or: 0, argent: 0, cuivre: 0 }, carriers: [], accounts: [], notes: '', log: [], journal: [], npcs: [], lieux: [] });
 
 // ---------- Comptes : argent du groupe gardé ailleurs, dettes, projets ----------
 // bal (en cuivre) : dépôt = ce qui est gardé ; on nous doit = ce qu'on attend ; on doit = ce qu'on doit ;
@@ -239,11 +239,16 @@ export function applyOp(s, op) {
 // Ajoute la ligne de journal (sauf si l'opération n'a rien changé)
 export function record(s, entry, who, date = Date.now(), id = uid()) {
   if (!entry?.text) return null;
+  // Corrections répétées d'un même champ par la même personne (moins de 10 min) : une seule ligne, mise à jour
+  if (entry.key) {
+    const top = (s.log || []).find((x) => x.key === entry.key);
+    if (top && top.who === who && date >= top.date && date - top.date < 600000) { top.date = date; top.text = entry.text; return top; }
+  }
   const e = { id, date, who, ...entry };
   if (!e.undo) delete e.undo;
   if (!e.purse) delete e.purse;
   delete e.changed;
-  s.log = [e, ...(s.log || [])].sort((a, b) => b.date - a.date).slice(0, 400);
+  s.log = [e, ...(s.log || [])].sort((a, b) => b.date - a.date).slice(0, 600);
   return e;
 }
 
