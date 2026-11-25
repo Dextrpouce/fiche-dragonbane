@@ -271,6 +271,8 @@ export function upgradeCharacter(c) {
   c.log ??= [];
   c.journal ??= []; // journal de campagne : une page par session
   c.npcs ??= []; // PNJ rencontrés (fiches reliées aux sessions)
+  // Notes secrètes sur le journal partagé : restent dans la fiche (jamais envoyées au groupe)
+  c.secret ??= {}; c.secret.s ??= {}; c.secret.n ??= {};
   c.pendingMarks ??= 0;
   c.backpack ??= true;
   return c;

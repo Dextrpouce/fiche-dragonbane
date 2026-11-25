@@ -1329,7 +1329,7 @@ function jSave(el, now) {
   if (now) save(); else jTimers.set(el, setTimeout(save, 1200));
 }
 
-const sessionText = (s, j) => [s.title, s.summary, s.npcs, s.places, s.loot, ...(s.todos || []).map((t) => t.t), ...(s.npcIds || []).map((id) => npcOf(j, id)?.name)].join(' ');
+const sessionText = (s, j) => [s.title, s.summary, s.npcs, s.places, s.loot, C()?.secret?.s?.[s.id], ...(s.todos || []).map((t) => t.t), ...(s.npcIds || []).map((id) => npcOf(j, id)?.name)].join(' ');
 const J_FIELDS = [['places', 'Lieux', 'Villages, ruines, chemins…', 3], ['loot', 'Butin et récompenses', 'Pièces, objets trouvés, promesses…', 3]];
 // PNJ : registre du journal (j.npcs), relié aux sessions (session.npcIds)
 const NPC_ATT = { ami: ['Allié', 'good'], neutre: ['Neutre', ''], hostile: ['Hostile', 'bad'], inconnu: ['Inconnu', 'muted'] };
@@ -1352,6 +1352,7 @@ function npcCards(j) {
       </button>
       ${n.place ? `<p class="small npc-place">📍 ${esc(n.place)}</p>` : ''}
       ${n.notes ? `<p class="small npc-notes">${esc(n.notes)}</p>` : ''}
+      ${group.shared && C().secret.n[n.id] ? `<p class="small npc-notes npc-secret">🔒 ${esc(C().secret.n[n.id])}</p>` : ''}
       ${seen.length ? `<div class="npc-seen"><small class="muted">Rencontré :</small>${seen.map((s) => `<button class="chip" data-act="jGoSession" data-id="${s.id}" title="${esc(s.title || '')}">S${s.n}</button>`).join('')}</div>` : ''}
     </article>`;
   }).join('')}</div>`;
@@ -1381,7 +1382,8 @@ function npcDialog(npc, linkTo = null) {
       <div class="fields">
         ${F.select('attitude', 'Attitude envers le groupe', cur.attitude, Object.entries(NPC_ATT).map(([k, [l]]) => [k, l]))}
         ${F.text('place', 'Où le trouver', cur.place, '', 'placeholder="Ex. Atelier près du port"')}
-        ${F.area('notes', 'Notes', cur.notes)}
+        ${F.area('notes', group.shared ? 'Notes (partagées avec le groupe)' : 'Notes', cur.notes)}
+        ${group.shared ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label><textarea name="secret" rows="2">${esc(C().secret.n[npc?.id] || '')}</textarea></div>` : ''}
       </div>
       ${seen.length ? `<p class="small muted">Rencontré : ${seen.map((s) => `Session ${s.n}${s.title ? ` (${esc(s.title)})` : ''}`).join(', ')}</p>` : ''}
       ${img ? '<label class="check"><input type="checkbox" name="noPhoto"><span>Retirer l’image</span></label>' : ''}
@@ -1407,8 +1409,11 @@ function npcDialog(npc, linkTo = null) {
           media.put({ id, image: f.dataset.photo }, C().id).catch(() => toast(media.error() || 'Image non envoyée'));
           Object.assign(v, { photo: id, portrait: '' });
         }
-        if (isNew) jApply({ t: 'j:npcAdd', npc: { id: R.uid(), ...v }, sid: linkTo });
-        else jApply({ t: 'j:npcSet', nid: npc.id, v });
+        const nid = npc?.id || R.uid();
+        // Note secrète : gardée dans ta fiche, jamais envoyée au groupe
+        if (f.secret) { const c = C(); const t = f.secret.value.trim(); if (t) c.secret.n[nid] = t; else delete c.secret.n[nid]; c.updatedAt = Date.now(); store.save(); }
+        if (isNew) jApply({ t: 'j:npcAdd', npc: { id: nid, ...v }, sid: linkTo });
+        else jApply({ t: 'j:npcSet', nid, v });
       } },
     ],
     onOpen: (f) => {
@@ -1499,6 +1504,7 @@ function viewJournal(c) {
             ${cur.npcs ? `<label class="small muted">Notes</label>${jField(sid, 'npcs', cur.npcs, 'rows="2"', true)}` : ''}
           </div>
           ${J_FIELDS.map(([k, label, ph, rows]) => `<div class="field"><label>${label}</label>${jField(sid, k, cur[k], `rows="${rows}" placeholder="${ph}"`, true)}</div>`).join('')}
+          ${sh ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label>${bind(`secret.s.${sid}`, c.secret.s[sid] || '', 'area', 'rows="3" placeholder="Ce que tu gardes pour toi : soupçons, plans, secrets de ton personnage…"')}</div>` : ''}
         </div>
         <h3>Pistes et choses à faire</h3>
         ${(cur.todos || []).map((t) => `<div class="j-todo-row ${t.done ? 'done' : ''}">

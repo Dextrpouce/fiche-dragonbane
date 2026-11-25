@@ -749,3 +749,7 @@ body.no-scroll { overflow: hidden; }
 .j-shared { display: flex; gap: 6px; align-items: flex-start; color: var(--teal); margin: 0 0 8px; }
 .j-shared .i { width: 18px; height: 18px; flex: none; }
 .sk-loading { padding: 12px; text-align: center; }
+/* Notes secrètes (journal partagé) */
+.j-secret textarea { background: rgba(60, 40, 90, .06); border-style: dashed; }
+.j-secret label small { font-family: var(--font-body); text-transform: none; letter-spacing: 0; color: var(--ink-soft); margin-left: 6px; }
+.npc-secret { color: #5b4a78; font-style: italic; }
