@@ -2,6 +2,7 @@ import * as R from './rules.js';
 import { store } from './store.js';
 import * as cloud from './cloud.js';
 import * as snd from './sound.js';
+import * as SK from './sketch.js';
 import * as L from './library.js';
 import { MANUAL } from './manual.js';
 import { RULES } from './combat-rules.js';
@@ -35,6 +36,9 @@ const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
   undo: '<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
+  quill: '<path d="M20 3C11 4 6 10 5 19"/><path d="M20 3c-1 6-5 10-11 11"/><path d="M4 21l2-3"/>',
+  eraser: '<path d="M8 20h12"/><path d="M4.5 15.5l9-9a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"/><path d="M9 11l5 5"/>',
+  expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   check: '<path d="M5 12l5 5L20 7"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>',
@@ -82,7 +86,7 @@ const MODES = {
 
 const TABS = [
   ['fiche', 'Fiche', 'sheet'], ['combat', 'Combat', 'sword'], ['magie', 'Magie', 'wand'], ['sac', 'Sac', 'bag'],
-  ['prog', 'Progrès', 'up'], ['carnet', 'Carnet', 'book'], ['groupe', 'Groupe', 'users'], ['biblio', 'Biblio', 'library'],
+  ['prog', 'Progrès', 'up'], ['carnet', 'Carnet', 'book'], ['journal', 'Journal', 'quill'], ['groupe', 'Groupe', 'users'], ['biblio', 'Biblio', 'library'],
 ];
 
 // ================= Champs de formulaire =================
@@ -254,6 +258,7 @@ function render() {
   </div>`;
   window.scrollTo(0, y);
   if (ui.tab === 'biblio' && ui.libSearch) filterLib();
+  if (ui.tab === 'journal') { afterJournal(); if (ui.jSearch) filterJournal(); } else sketchCtl = null;
 }
 
 function topbar(c) {
@@ -1285,7 +1290,103 @@ function viewCarnet(c) {
   </div>`;
 }
 
-const VIEWS = { fiche: viewFiche, combat: viewCombat, magie: viewMagie, sac: viewSac, prog: viewProg, carnet: viewCarnet, groupe: viewGroupe, biblio: viewBiblio };
+// ---------- Journal : une page par session (rubriques, pistes, croquis au stylet) ----------
+// Les textes sont dans la fiche (c.journal) ; les croquis à part (store.sketch), pour garder la fiche légère.
+const todayISO = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const fmtDay = (iso) => { const d = iso ? new Date(`${iso}T12:00`) : null; return d && !isNaN(d) ? d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; };
+const sessionText = (s) => [s.title, s.summary, s.npcs, s.places, s.loot, ...(s.todos || []).map((t) => t.t)].join(' ');
+const J_FIELDS = [['summary', 'Résumé', 'Ce qui s’est passé…', 6], ['npcs', 'PNJ rencontrés', 'Noms, rôles, ce qu’ils veulent…', 3], ['places', 'Lieux', 'Villages, ruines, chemins…', 3], ['loot', 'Butin et récompenses', 'Pièces, objets trouvés, promesses…', 3]];
+let sketchCtl = null; // zone de dessin affichée
+
+function viewJournal(c) {
+  const list = c.journal;
+  if (!list.length) {
+    return `<section class="card journal-empty">
+      <h2>Journal de campagne</h2>
+      <p>Une page par séance : ce qui s’est passé, les PNJ, les lieux, le butin, les pistes à suivre, et une page de croquis pour dessiner au stylet (plans, cartes, notes griffonnées).</p>
+      <button class="btn" data-act="jNew">${icon('plus')} Première session</button>
+      <p class="small muted">Sur iPad avec l’Apple Pencil, tu peux aussi écrire à la main directement dans les champs : l’iPad transforme l’écriture en texte. Sur Android, utilise le mode écriture manuscrite du clavier.</p>
+    </section>`;
+  }
+  const cur = list.find((s) => s.id === (ui.jSession ?? localStorage.getItem('dragonbane.jSession'))) || list[0];
+  ui.jSession = cur.id; localStorage.setItem('dragonbane.jSession', cur.id); // session ouverte retenue d'un lancement à l'autre
+  const i = list.indexOf(cur);
+  const open = list.flatMap((s, si) => (s.todos || []).map((t, ti) => ({ s, si, t, ti }))).filter((x) => !x.t.done);
+  const sessions = list.map((s) => `<button class="j-item ${s === cur ? 'on' : ''}" data-act="jOpen" data-id="${s.id}" data-search="${esc(R.norm(sessionText(s)))}">
+      <b>Session ${s.n}</b><span>${esc(s.title || 'Sans titre')}</span><small>${fmtDay(s.date)}${s.sketch && store.sketch(s.sketch)?.strokes?.length ? ' · ✎' : ''}</small>
+    </button>`).join('');
+  const sk = cur.sketch ? store.sketch(cur.sketch) : null;
+  return `<div class="grid journal">
+    <section class="card j-list">
+      <h2>Journal</h2>
+      <button class="btn block" data-act="jNew">${icon('plus')} Nouvelle session</button>
+      <input class="lib-search" id="jSearch" type="search" placeholder="Rechercher dans le journal…" value="${esc(ui.jSearch || '')}">
+      <div class="j-items">${sessions}</div>
+      <p class="empty j-none" hidden>Rien ne correspond.</p>
+    </section>
+    <div class="j-main">
+      ${open.length ? `<section class="card j-open">
+        <h2>Pistes en cours</h2>
+        ${open.map(({ s, si, t, ti }) => `<label class="j-todo"><input type="checkbox" data-act="jTodo" data-s="${si}" data-t="${ti}"><span>${esc(t.t)}</span><small>S${s.n}</small></label>`).join('')}
+      </section>` : ''}
+      <section class="card j-page">
+        <div class="j-head">
+          <span class="j-num">Session ${cur.n}</span>
+          <input class="j-title" data-bind="journal.${i}.title" value="${esc(cur.title)}" placeholder="Titre de la séance">
+          <input class="j-date" type="date" data-bind="journal.${i}.date" data-rerender value="${esc(cur.date)}">
+          <button class="icon-btn small" data-act="jDelete" aria-label="Supprimer cette session">${icon('trash')}</button>
+        </div>
+        <div class="j-fields">
+          ${J_FIELDS.map(([k, label, ph, rows]) => `<div class="field ${k === 'summary' ? 'full' : ''}"><label>${label}</label>${bind(`journal.${i}.${k}`, cur[k] || '', 'area', `rows="${rows}" placeholder="${ph}"`)}</div>`).join('')}
+        </div>
+        <h3>Pistes et choses à faire</h3>
+        ${(cur.todos || []).map((t, ti) => `<div class="j-todo-row ${t.done ? 'done' : ''}">
+            <input type="checkbox" data-act="jTodo" data-s="${i}" data-t="${ti}" ${t.done ? 'checked' : ''}>
+            <input data-bind="journal.${i}.todos.${ti}.t" value="${esc(t.t)}">
+            <button class="icon-btn small" data-act="jTodoDel" data-t="${ti}" aria-label="Supprimer">${icon('trash')}</button>
+          </div>`).join('')}
+        <form class="quick-add" data-form="jTodo"><input name="t" placeholder="Ajouter une piste (ex. Retourner voir Maître Ulwar)"><button class="btn small" type="submit">${icon('plus')}</button></form>
+        <h3>Croquis</h3>
+        ${sk ? `<div class="sketch" data-sketch="${sk.id}">
+            <div class="sk-tools">
+              ${SK.COLORS.map((col, ci) => `<button class="sk-btn sk-col" data-act="skColor" data-c="${ci}" title="${col.name}"><i style="background:${col.css}"></i></button>`).join('')}
+              <button class="sk-btn" data-act="skErase" title="Gomme">${icon('eraser')}</button>
+              <span class="spacer"></span>
+              <button class="sk-btn" data-act="skUndo" title="Annuler le dernier trait">${icon('undo')}</button>
+              <button class="sk-btn" data-act="skClear" title="Tout effacer">${icon('trash')}</button>
+              <button class="sk-btn" data-act="skFull" title="Plein écran">${icon('expand')}</button>
+            </div>
+            <canvas class="sk-canvas"></canvas>
+          </div>
+          <p class="small muted hint">Stylet, doigt ou souris. Avec un stylet, la paume posée sur l’écran ne dessine pas ; la pression épaissit le trait.</p>`
+          : `<button class="btn ghost" data-act="jSketch">${icon('edit')} Ajouter une page de croquis</button>`}
+      </section>
+    </div>
+  </div>`;
+}
+// Après l'affichage : active la zone de dessin et la recherche
+function afterJournal() {
+  const wrap = document.querySelector('.sketch[data-sketch]');
+  if (!wrap) { sketchCtl = null; return; }
+  const sk = store.sketch(wrap.dataset.sketch);
+  const prev = sketchCtl;
+  sketchCtl = SK.mountSketch(wrap, sk, () => store.saveSketch(sk));
+  if (prev) { sketchCtl.setColor(prev.color); sketchCtl.setErase(prev.erase); }
+  syncSketchTools();
+}
+function syncSketchTools() {
+  document.querySelectorAll('.sk-col').forEach((b) => b.classList.toggle('on', !sketchCtl.erase && +b.dataset.c === sketchCtl.color));
+  document.querySelector('[data-act="skErase"]')?.classList.toggle('on', sketchCtl.erase);
+}
+function filterJournal() {
+  const q = R.norm(ui.jSearch || ''); let shown = 0;
+  document.querySelectorAll('.j-item').forEach((b) => { const ok = !q || b.dataset.search.includes(q); b.hidden = !ok; if (ok) shown++; });
+  const none = document.querySelector('.j-none'); if (none) none.hidden = shown > 0;
+}
+window.addEventListener('resize', () => { if (sketchCtl && document.querySelector('.sketch')) sketchCtl.resize(); });
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.querySelector('.sketch.full') && !dlg.open) A.skFull(); });
+
+const VIEWS = { fiche: viewFiche, combat: viewCombat, magie: viewMagie, sac: viewSac, prog: viewProg, carnet: viewCarnet, journal: viewJournal, groupe: viewGroupe, biblio: viewBiblio };
 
 // ================= Lanceur de dés =================
 // Jet de D20 sous une valeur : avantages/désavantages, Dragon (1), Démon (20), forcer le jet.
@@ -1968,6 +2069,46 @@ const A = {
   },
   exportAll() { download(`dragonbane-${new Date().toISOString().slice(0, 10)}.json`, store.exportAll()); },
   exportOne() { const c = C(); download(`${R.norm(c.name).replace(/[^a-z0-9]+/g, '-') || 'personnage'}.json`, store.exportOne(c)); },
+  // ----- Journal -----
+  jNew() {
+    const c = C();
+    const n = c.journal.reduce((m, s) => Math.max(m, +s.n || 0), 0) + 1;
+    const s = { id: R.uid(), n, date: todayISO(), title: '', summary: '', npcs: '', places: '', loot: '', todos: [], sketch: null };
+    c.journal.unshift(s); ui.jSession = s.id; ui.jSearch = '';
+    commit(); window.scrollTo(0, 0);
+  },
+  jOpen(el) { ui.jSession = el.dataset.id; render(); if (innerWidth < 720) document.querySelector('.j-page')?.scrollIntoView({ block: 'start' }); },
+  jDelete() {
+    const c = C(); const s = c.journal.find((x) => x.id === ui.jSession); if (!s) return;
+    confirmDialog('Supprimer la session', `Supprimer la session ${s.n}${s.title ? ` « ${esc(s.title)} »` : ''}, ses notes et son croquis ? C’est définitif.`, 'Supprimer', () => {
+      if (s.sketch) store.removeSketch(s.sketch);
+      c.journal = c.journal.filter((x) => x !== s); ui.jSession = null;
+      commit();
+    });
+  },
+  jTodo(el) {
+    const c = C(); const t = c.journal[+el.dataset.s]?.todos?.[+el.dataset.t]; if (!t) return;
+    t.done = el.checked; commit();
+  },
+  jTodoDel(el) {
+    const c = C(); const s = c.journal.find((x) => x.id === ui.jSession); if (!s) return;
+    s.todos.splice(+el.dataset.t, 1); commit();
+  },
+  jSketch() {
+    const c = C(); const s = c.journal.find((x) => x.id === ui.jSession); if (!s) return;
+    const sk = { id: R.uid(), cid: c.id, strokes: [] };
+    store.saveSketch(sk); s.sketch = sk.id; commit();
+  },
+  skColor(el) { sketchCtl?.setColor(+el.dataset.c); syncSketchTools(); },
+  skErase() { sketchCtl?.setErase(!sketchCtl.erase); syncSketchTools(); },
+  skUndo() { sketchCtl?.undo(); },
+  skClear() { if (sketchCtl) confirmDialog('Effacer le croquis', 'Effacer tous les traits de cette page ?', 'Effacer', () => { sketchCtl.clear(); }); },
+  skFull() {
+    const w = document.querySelector('.sketch'); if (!w) return;
+    const on = !w.classList.contains('full');
+    w.classList.toggle('full', on); document.body.classList.toggle('no-scroll', on);
+    sketchCtl?.resize();
+  },
   portraitPick() { pickPortrait(); },
   portraitView() {
     const c = C(); if (!c?.portrait) return;
@@ -2360,6 +2501,7 @@ $app.addEventListener('click', (e) => {
 $app.addEventListener('input', (e) => {
   const el = e.target;
   if (el.id === 'libSearch') { ui.libSearch = el.value; filterLib(); return; }
+  if (el.id === 'jSearch') { ui.jSearch = el.value; filterJournal(); return; }
   if (!el.dataset.bind) return;
   setPath(C(), el.dataset.bind, el.hasAttribute('data-num') ? num(el.value) : el.value);
   commit(false);
@@ -2387,6 +2529,14 @@ $app.addEventListener('change', (e) => {
 });
 $app.addEventListener('submit', (e) => {
   const form = e.target;
+  if (form.dataset.form === 'jTodo') {
+    e.preventDefault();
+    const t = form.t.value.trim(); if (!t) return;
+    const s = C().journal.find((x) => x.id === ui.jSession); if (!s) return;
+    (s.todos ||= []).push({ id: R.uid(), t, done: false }); commit();
+    setTimeout(() => document.querySelector('form[data-form="jTodo"] input')?.focus());
+    return;
+  }
   if (form.dataset.form === 'gItem') {
     e.preventDefault();
     const raw = form.item.value.trim();

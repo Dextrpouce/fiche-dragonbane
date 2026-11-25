@@ -73,19 +73,23 @@ export async function pull() {
   const characters = {};
   const deleted = {};
   let group = null;
+  const sketches = {};
   snap.forEach((doc) => {
     const v = doc.data();
+    // Croquis du journal : champ « sketch » (les anciennes versions de l'appli les ignorent)
+    if (doc.id.startsWith(SKETCH)) { if (v.sketch) sketches[doc.id.slice(SKETCH.length)] = JSON.parse(v.sketch); return; }
     // Le groupe est rangé dans le champ « group » (pas « json ») : les anciennes versions l'ignorent
     if (doc.id === GROUP_ID) { if (v.group) group = JSON.parse(v.group); return; }
     if (v.deleted) deleted[doc.id] = v.updatedAt || 0;
     else if (v.json) characters[doc.id] = JSON.parse(v.json);
   });
-  return { characters, deleted, group };
+  return { characters, deleted, group, sketches };
 }
 const GROUP_ID = '__groupe';
+const SKETCH = '__croquis_';
 
 // Envoie les personnages modifiés depuis la dernière synchro
-export async function push(characters, deleted, since, group = null) {
+export async function push(characters, deleted, since, group = null, sketches = {}) {
   const c = col();
   const batch = fb.writeBatch(db);
   let n = 0;
@@ -96,6 +100,11 @@ export async function push(characters, deleted, since, group = null) {
   for (const ch of Object.values(characters)) {
     if ((ch.updatedAt || 0) <= since) continue;
     batch.set(fb.doc(c, ch.id), { json: JSON.stringify(ch), name: ch.name, updatedAt: ch.updatedAt || Date.now(), deleted: false });
+    n++;
+  }
+  for (const s of Object.values(sketches)) {
+    if ((s.updatedAt || 0) <= since) continue;
+    batch.set(fb.doc(c, SKETCH + s.id), { sketch: JSON.stringify(s), updatedAt: s.updatedAt });
     n++;
   }
   for (const [id, ts] of Object.entries(deleted)) {

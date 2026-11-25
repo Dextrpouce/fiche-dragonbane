@@ -15,6 +15,9 @@ const meta = load(META_KEY, { currentId: null, firebase: null, dirty: false, las
 Object.values(data.characters).forEach(upgradeCharacter);
 // Caisse et matériel du groupe (montures, véhicules) : un seul par compte
 data.group = upgradeGroup(data.group || newGroup());
+// Croquis du journal : rangés à part des personnages (un document chacun en ligne) pour ne pas alourdir les fiches.
+// { id: { id, cid, strokes, updatedAt, deleted? } } — un croquis supprimé garde une trace (deleted) pour la synchro.
+data.sketches ??= {};
 
 let syncTimer = null;
 let syncing = false;
@@ -78,11 +81,18 @@ export const store = {
   },
   save() { markDirty(); },
   get group() { return data.group; },
+  sketch(id) { const s = data.sketches[id]; return s && !s.deleted ? s : null; },
+  // Enregistre un croquis sans redessiner l'appli (on est peut-être en train de dessiner)
+  saveSketch(s) { s.updatedAt = Date.now(); delete s.deleted; data.sketches[s.id] = s; markDirty(); },
+  removeSketch(id) { if (data.sketches[id]) { data.sketches[id] = { id, deleted: true, strokes: [], updatedAt: Date.now() }; markDirty(); } },
   saveGroup() { data.group.updatedAt = Date.now(); markDirty(); },
 
   exportAll() { return JSON.stringify({ format: 'dragonbane', version: 1, ...data }, null, 2); },
   // (l'import d'un export complet reprend aussi le groupe s'il est plus récent)
-  exportOne(c) { return JSON.stringify({ format: 'dragonbane', version: 1, characters: { [c.id]: c } }, null, 2); },
+  exportOne(c) {
+    const sketches = Object.fromEntries(Object.values(data.sketches).filter((s) => s.cid === c.id && !s.deleted).map((s) => [s.id, s]));
+    return JSON.stringify({ format: 'dragonbane', version: 1, characters: { [c.id]: c }, sketches }, null, 2);
+  },
   importAll(json) {
     const incoming = JSON.parse(json);
     const chars = incoming.characters ? Object.values(incoming.characters) : [incoming];
@@ -97,6 +107,9 @@ export const store = {
     }
     if (n) meta.currentId = chars.find((c) => c?.id && c.attrs).id;
     if (incoming.group && (incoming.group.updatedAt || 0) > (data.group.updatedAt || 0)) data.group = upgradeGroup(incoming.group);
+    for (const s of Object.values(incoming.sketches || {})) {
+      if (s?.id && (s.updatedAt || 0) >= (data.sketches[s.id]?.updatedAt || 0)) data.sketches[s.id] = { ...s, updatedAt: Date.now() };
+    }
     markDirty();
     return n;
   },
@@ -119,10 +132,11 @@ export const store = {
       const start = Date.now();
       const remote = await cloud.pull();
       const changed = merge(remote);
-      await cloud.push(data.characters, data.deleted, meta.lastPush, data.group);
+      await cloud.push(data.characters, data.deleted, meta.lastPush, data.group, data.sketches);
       meta.lastPush = start;
       meta.lastSync = Date.now();
-      meta.dirty = Object.values(data.characters).some((c) => (c.updatedAt || 0) > start) || (data.group.updatedAt || 0) > start;
+      meta.dirty = Object.values(data.characters).some((c) => (c.updatedAt || 0) > start) || (data.group.updatedAt || 0) > start
+        || Object.values(data.sketches).some((s) => (s.updatedAt || 0) > start);
       persist();
       setStatus(meta.dirty ? 'pending' : 'synced', `Synchronisé (${cloud.user().email})`, { reloaded: changed });
     } catch (e) {
@@ -162,6 +176,9 @@ function scheduleSync() {
 function merge(remote) {
   let changed = false;
   if (remote.group && (remote.group.updatedAt || 0) > (data.group.updatedAt || 0)) { data.group = upgradeGroup(remote.group); changed = true; }
+  for (const [id, s] of Object.entries(remote.sketches || {})) {
+    if ((s.updatedAt || 0) > (data.sketches[id]?.updatedAt || 0)) { data.sketches[id] = s; changed = true; }
+  }
   for (const [id, ts] of Object.entries(remote.deleted || {})) {
     data.deleted[id] = Math.max(data.deleted[id] || 0, ts);
   }
