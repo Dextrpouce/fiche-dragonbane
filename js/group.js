@@ -368,6 +368,11 @@ export const group = {
     remember({ id, name, role: mine.find((r) => r.id === id)?.role || 'joueur' }); save(); this.refresh(); emit();
     return name;
   },
+  // Plus de groupe affiché (personnage sans groupe) : on reste membre, on le garde dans la liste
+  deactivate() {
+    if (!cur) return;
+    activate(null); save(); this.refresh(); emit();
+  },
   // Passer à un autre de mes groupes (sans code : j'en suis déjà membre)
   switchTo(id) {
     if (!id || cur?.id === id) return false;
@@ -381,9 +386,8 @@ export const group = {
     const refs = (Array.isArray(ref) ? ref : ref ? [ref] : []).filter((r) => r?.id);
     let added = 0;
     for (const r of refs) if (!mine.some((x) => x.id === r.id)) { mine.push({ id: r.id, name: r.name || 'Groupe', role: r.role || 'joueur' }); added++; }
-    if (!cur && mine.length) { const r = mine[0]; activate(cache[r.id] || { id: r.id, name: r.name, members: {}, state: EMPTY(), updatedAt: 0 }); save(); this.refresh(); emit(); return true; }
     if (added) { save(); emit(); }
-    return false;
+    return added > 0;
   },
   // Entrer dans un groupe comme meneur de jeu, avec le code MJ donné par l'administrateur
   async joinAsMJ(code) {

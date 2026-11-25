@@ -75,21 +75,24 @@ export async function pull() {
   let group = null;
   const sketches = {};
   let myGroup;
+  let mjNotes = null;
   snap.forEach((doc) => {
     const v = doc.data();
     // Croquis du journal : champ « sketch » (les anciennes versions de l'appli les ignorent)
     if (doc.id.startsWith(SKETCH)) { if (v.sketch) sketches[doc.id.slice(SKETCH.length)] = JSON.parse(v.sketch); return; }
     // Mon groupe partagé (pour le retrouver sur tous mes appareils sans ressaisir le code)
+    if (doc.id === MJ_NOTES) { try { mjNotes = v.notes ? JSON.parse(v.notes) : null; } catch { /* illisible */ } return; }
     if (doc.id === MY_GROUP) { try { myGroup = v.ref ? JSON.parse(v.ref) : null; } catch { /* illisible */ } return; }
     // Le groupe est rangé dans le champ « group » (pas « json ») : les anciennes versions l'ignorent
     if (doc.id === GROUP_ID) { if (v.group) group = JSON.parse(v.group); return; }
     if (v.deleted) deleted[doc.id] = v.updatedAt || 0;
     else if (v.json) characters[doc.id] = JSON.parse(v.json);
   });
-  return { characters, deleted, group, sketches, myGroup };
+  return { characters, deleted, group, sketches, myGroup, mjNotes };
 }
 const GROUP_ID = '__groupe';
 const MY_GROUP = '__monGroupe';
+const MJ_NOTES = '__notesMJ'; // notes privées du MJ (champ « notes », pas « json » : les anciennes versions l'ignorent)
 // Mon groupe partagé, rangé dans mon compte : { id, name } (ref vide = je n'en ai pas)
 export async function setMyGroup(ref) {
   await fb.setDoc(fb.doc(col(), MY_GROUP), { ref: ref ? JSON.stringify(ref) : '', updatedAt: Date.now() });
@@ -97,7 +100,7 @@ export async function setMyGroup(ref) {
 const SKETCH = '__croquis_';
 
 // Envoie les personnages modifiés depuis la dernière synchro
-export async function push(characters, deleted, since, group = null, sketches = {}) {
+export async function push(characters, deleted, since, group = null, sketches = {}, mjNotes = null) {
   const c = col();
   const batch = fb.writeBatch(db);
   let n = 0;
@@ -110,6 +113,7 @@ export async function push(characters, deleted, since, group = null, sketches = 
     batch.set(fb.doc(c, ch.id), { json: JSON.stringify(ch), name: ch.name, updatedAt: ch.updatedAt || Date.now(), deleted: false });
     n++;
   }
+  if (mjNotes && (mjNotes.updatedAt || 0) > since) { batch.set(fb.doc(c, MJ_NOTES), { notes: JSON.stringify(mjNotes), updatedAt: mjNotes.updatedAt }); n++; }
   for (const s of Object.values(sketches)) {
     if ((s.updatedAt || 0) <= since) continue;
     batch.set(fb.doc(c, SKETCH + s.id), { sketch: JSON.stringify(s), updatedAt: s.updatedAt });

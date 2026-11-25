@@ -16,6 +16,12 @@ const dlg = document.getElementById('dlg');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 // Personnage affiché : le tien, ou celui d'un joueur absent que tu joues (ui.guest, voir « Personnages prêtés »)
 let mjStubObj = null;
+// Le personnage affiché (le mien, pas un prêté ni la fiche du MJ) rejoint un groupe
+function linkChar(gid) {
+  const c = C();
+  if (!gid || !c || c.stub || ui.guest || ui.mjView) return;
+  c.groupId = gid; c.updatedAt = Date.now(); store.save();
+}
 function setMjActive(on) { ui.mjActive = !!on; localStorage.setItem('dragonbane.mjActive', on ? '1' : '0'); }
 // MJ sans personnage à lui : une fiche vide en mémoire (jamais enregistrée), pour que l'appli fonctionne
 const mjStub = () => (mjStubObj ||= Object.assign(R.upgradeCharacter(R.newCharacter({ name: 'Meneur de jeu' })), { id: '__mj', stub: true }));
@@ -264,8 +270,6 @@ function render() {
   if ((ui.guest || ui.mjView) && ui.mode !== 'normal') ui.mode = 'normal'; // personnage prêté ou vu par le MJ : ni mode libre ni progression
   if (ui.tab === 'mj' && !isMJ()) ui.tab = 'fiche';
   if (c.stub && !['mj', 'journal', 'groupe', 'biblio'].includes(ui.tab)) ui.tab = 'mj';
-  // Mon personnage joué dans la partie active : il la retient (choisir ce personnage y ramènera)
-  if (!c.stub && !ui.guest && !ui.mjView && group.shared && !c.groupId && !isMJ()) { c.groupId = group.shared.id; store.save(); }
   watchLent(); mjSync(); mjWatch();
   const y = window.scrollY;
   const marked = c.skills.filter((s) => s.mark).length;
@@ -623,10 +627,12 @@ const fmtWhen = (t) => new Date(t).toLocaleString('fr-FR', { day: '2-digit', mon
 function shareCard() {
   const sh = group.shared;
   if (!sh) {
+    const c = C(); const known = group.list.filter((r) => r.role !== 'mj');
     return `<section class="card span-all share">
       <h2>Groupe partagé</h2>
-      <p class="small">Ce groupe n’est pour l’instant que sur ton compte. Partage-le : chaque joueur verra et modifiera la même caisse et le même matériel depuis son téléphone, et le journal dira qui a fait quoi.</p>
-      <div class="add-row center-row"><button class="btn" data-act="gShareCreate">${icon('users')} Partager ce groupe</button><button class="btn ghost" data-act="gShareJoin">Rejoindre avec un code</button></div>
+      <p class="small">${c && !c.stub ? `<b>${esc(c.name)}</b> ne fait partie d’aucun groupe partagé.` : 'Aucun groupe partagé.'} Crée un groupe et donne son code aux autres joueurs, ou rejoins celui de ta table : chacun verra et modifiera la même caisse, le même matériel et le même journal.</p>
+      <div class="add-row center-row"><button class="btn" data-act="gShareCreate">${icon('users')} Créer un groupe</button><button class="btn ghost" data-act="gShareJoin">Rejoindre avec un code</button></div>
+      ${known.length ? `<p class="small muted">Ou rejoindre un de tes groupes :</p><div class="add-row center-row">${known.map((r) => `<button class="btn small ghost" data-act="gJoinKnown" data-id="${r.id}">↪ ${esc(r.name)}</button>`).join('')}</div>` : ''}
     </section>`;
   }
   const members = Object.values(sh.members || {});
@@ -635,7 +641,7 @@ function shareCard() {
     : err ? `<p class="small bad">${esc(err)}</p>` : '<p class="small good">À jour : tout le groupe voit la même chose.</p>';
   return `<section class="card span-all share">
     <div class="share-head"><span class="share-name"><b>${esc(sh.name)}</b><small>Groupe partagé · code <b class="code">${esc(sh.id)}</b></small></span>
-      <button class="btn small ghost" data-act="gShareCode">${icon('users')} Inviter</button></div>
+      <span class="share-btns"><button class="btn small ghost" data-act="gShareCode">${icon('users')} Inviter</button><button class="btn small ghost" data-act="gLeave">Quitter le groupe</button></span></div>
     ${members.length ? `<p class="small muted">Membres : ${members.map(esc).join(', ')}</p>` : ''}
     ${status}
     <div class="mj-share">
@@ -1023,7 +1029,7 @@ function shareCreateDialog() {
       const name = f.name.value.trim() || 'Les aventuriers';
       const seed = f.seed.checked ? store.group : { carriers: R.newGroup().carriers };
       (async () => {
-        try { await group.create(name, seed, author()); dlg.close(); render(); shareCodeDialog(); } catch (e) { toast(e.message || 'Création impossible'); }
+        try { await group.create(name, seed, author()); linkChar(group.shared?.id); dlg.close(); render(); shareCodeDialog(); } catch (e) { toast(e.message || 'Création impossible'); }
       })();
       return false;
     } }],
@@ -1037,7 +1043,7 @@ function shareJoinDialog() {
       <p class="small muted">L’onglet Groupe affichera le groupe partagé. Ton groupe personnel reste de côté sur ton compte : tu le retrouves si tu quittes le groupe.</p>`,
     actions: [cancel, { label: 'Rejoindre', primary: true, onClick: (f) => {
       (async () => {
-        try { const name = await group.join(f.code.value); dlg.close(); render(); toast(`Bienvenue dans « ${name} »`); } catch (e) { toast(e.message || 'Code refusé'); }
+        try { const name = await group.join(f.code.value); linkChar(group.shared?.id); dlg.close(); render(); toast(`Bienvenue dans « ${name} »`); } catch (e) { toast(e.message || 'Code refusé'); }
       })();
       return false;
     } }],
@@ -1052,7 +1058,7 @@ function shareCodeDialog() {
     body: `<p>Code du groupe :</p><p class="share-code">${esc(sh.id)}</p>
       <p class="small muted">Chaque joueur ouvre l’onglet <b>Groupe</b> › <b>Rejoindre avec un code</b>. Tout le monde voit et modifie la même caisse et le même matériel ; le journal indique qui a fait quoi.</p>`,
     actions: [
-      { label: 'Quitter', cls: 'ghost', onClick: () => { setTimeout(() => confirmDialog('Quitter le groupe', `Quitter « ${esc(sh.name)} » ? Tu retrouveras ton groupe personnel. Tu pourras revenir avec le code <b>${esc(sh.id)}</b>.`, 'Quitter', async () => { await group.leave(); render(); toast('Groupe quitté'); })); } },
+      { label: 'Quitter', cls: 'ghost', onClick: () => { setTimeout(() => A.gLeave()); } },
       'spacer',
       { label: 'Copier', cls: 'ghost', onClick: () => { navigator.clipboard?.writeText(text).then(() => toast('Invitation copiée')).catch(() => toast(sh.id)); return false; } },
       ...(navigator.share ? [{ label: 'Envoyer', primary: true, onClick: () => { navigator.share({ text }).catch(() => {}); } }] : [closeBtn]),
@@ -1352,7 +1358,7 @@ const mjErrText = (e) => (e?.code === 'permission-denied' ? 'Envoi au MJ refusé
 const mjMediaIds = (c) => [...(c.journal || []).map((s) => s.sketch), ...(c.npcs || []).map((n) => n.photo), ...(c.lieux || []).map((l) => l.photo)].filter(Boolean);
 let mjOkAt = 0; let mjRetry = null;
 // Personnage de la partie active ? (un personnage sans partie n'est envoyé que si je ne suis pas le MJ de celle-ci)
-const inActiveGroup = (c) => (c.groupId ? c.groupId === group.shared?.id : !isMJ());
+const inActiveGroup = (c) => !!c.groupId && c.groupId === group.shared?.id;
 async function mjSend(c) {
   const g = group.shared?.id;
   if (!g || !group.shared.mj || !cloud.user() || !c) return false;
@@ -1427,6 +1433,9 @@ function mjSecrets(kind, id) {
   const members = group.shared.members || {};
   return Object.entries(mjData).flatMap(([owner, list]) => (list || []).map((ch) => ({ ch, player: members[owner] || '', t: ch.secret?.[kind]?.[id] })).filter((x) => x.t));
 }
+// Champ privé du MJ (sessions, PNJ, lieux) : rangé dans son compte, jamais envoyé au groupe
+const mjNoteField = (kind, id) => (isMJ() && id ? `<div class="field full j-secret mj-own"><label>👑 Notes du MJ <small>visibles par toi seul</small></label><textarea data-mjn="${kind}|${id}" rows="3" placeholder="Ce que les joueurs ne savent pas…">${esc(store.mjNote(group.shared.id, kind, id))}</textarea></div>` : '');
+const mjNoteLine = (kind, id) => { const t = isMJ() ? store.mjNote(group.shared.id, kind, id) : ''; return t ? `<p class="small npc-notes mj-note-line">👑 ${esc(t)}</p>` : ''; };
 function mjSecretBlock(kind, id) {
   const list = mjSecrets(kind, id);
   if (!list.length) return '';
@@ -1735,6 +1744,7 @@ function npcCards(j) {
       ${n.place ? `<p class="small npc-place">📍 ${esc(n.place)}</p>` : ''}
       ${n.notes ? `<p class="small npc-notes">${esc(n.notes)}</p>` : ''}
       ${group.shared && C().secret?.n?.[n.id] ? `<p class="small npc-notes npc-secret">🔒 ${esc(C().secret.n[n.id])}</p>` : ''}
+      ${mjNoteLine('n', n.id)}
       ${mjSecretBlock('n', n.id)}
       ${jEd(n, 'fiche')}
       ${seen.length ? `<div class="npc-seen"><small class="muted">Rencontré :</small>${seen.map((s) => `<button class="chip" data-act="jGoSession" data-id="${s.id}" title="${esc(s.title || '')}">S${s.n}</button>`).join('')}</div>` : ''}
@@ -1769,6 +1779,7 @@ function npcDialog(npc, linkTo = null) {
         ${F.area('notes', group.shared ? 'Notes (partagées avec le groupe)' : 'Notes', cur.notes)}
         ${group.shared && !C().stub ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label><textarea name="secret" rows="2">${esc(C().secret.n[npc?.id] || '')}</textarea></div>` : ''}
       </div>
+      ${isMJ() ? `<div class="field full j-secret mj-own"><label>👑 Notes du MJ <small>visibles par toi seul</small></label><textarea name="mjnote" rows="3">${esc(npc ? store.mjNote(group.shared.id, 'n', npc.id) : '')}</textarea></div>` : ''}
       ${npc ? mjSecretBlock('n', npc.id) : ''}
       ${seen.length ? `<p class="small muted">Rencontré : ${seen.map((s) => `Session ${s.n}${s.title ? ` (${esc(s.title)})` : ''}`).join(', ')}</p>` : ''}
       ${img ? '<label class="check"><input type="checkbox" name="noPhoto"><span>Retirer l’image</span></label>' : ''}
@@ -1795,6 +1806,7 @@ function npcDialog(npc, linkTo = null) {
           Object.assign(v, { photo: id, portrait: '' });
         }
         const nid = npc?.id || R.uid();
+        if (f.mjnote) store.setMjNote(group.shared.id, 'n', nid, f.mjnote.value.trim());
         // Note secrète : gardée dans ta fiche, jamais envoyée au groupe
         if (f.secret) { const c = C(); const t = f.secret.value.trim(); if (t) c.secret.n[nid] = t; else delete c.secret.n[nid]; c.updatedAt = Date.now(); store.save(); }
         if (isNew) jApply({ t: 'j:npcAdd', npc: { id: nid, ...v }, sid: linkTo });
@@ -1841,6 +1853,7 @@ function placeCards(j) {
       </button>
       ${l.notes ? `<p class="small npc-notes">${esc(l.notes)}</p>` : ''}
       ${sec[l.id] ? `<p class="small npc-notes npc-secret">🔒 ${esc(sec[l.id])}</p>` : ''}
+      ${mjNoteLine('l', l.id)}
       ${mjSecretBlock('l', l.id)}
       ${jEd(l, 'fiche')}
       ${npcs.length ? `<div class="npc-seen"><small class="muted">PNJ sur place :</small>${npcs.map((n) => `<button class="chip" data-act="npcOpen" data-id="${n.id}">${esc(n.name)}</button>`).join('')}</div>` : ''}
@@ -1876,6 +1889,7 @@ function placeDialog(lieu, linkTo = null) {
         ${group.shared && !C().stub ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label><textarea name="secret" rows="2">${esc(C().secret.l[lieu?.id] || '')}</textarea></div>` : ''}
       </div>
       ${j.npcs.length ? `<p class="small"><b>PNJ sur place</b></p><div class="place-npcs">${j.npcs.map((n) => `<label class="check"><input type="checkbox" name="npc_${n.id}" ${(cur.npcIds || []).includes(n.id) ? 'checked' : ''}><span>${esc(n.name)}</span></label>`).join('')}</div>` : ''}
+      ${isMJ() ? `<div class="field full j-secret mj-own"><label>👑 Notes du MJ <small>visibles par toi seul</small></label><textarea name="mjnote" rows="3">${esc(lieu ? store.mjNote(group.shared.id, 'l', lieu.id) : '')}</textarea></div>` : ''}
       ${lieu ? mjSecretBlock('l', lieu.id) : ''}
       ${seen.length ? `<p class="small muted">Visité : ${seen.map((s) => `Session ${s.n}${s.title ? ` (${esc(s.title)})` : ''}`).join(', ')}</p>` : ''}
       ${img ? '<label class="check"><input type="checkbox" name="noPhoto"><span>Retirer l’image</span></label>' : ''}
@@ -1901,6 +1915,7 @@ function placeDialog(lieu, linkTo = null) {
           v.photo = id;
         }
         const pid = lieu?.id || R.uid();
+        if (f.mjnote) store.setMjNote(group.shared.id, 'l', pid, f.mjnote.value.trim());
         if (f.secret) { const c = C(); const t = f.secret.value.trim(); if (t) c.secret.l[pid] = t; else delete c.secret.l[pid]; c.updatedAt = Date.now(); store.save(); }
         if (isNew) jApply({ t: 'j:placeAdd', place: { id: pid, ...v }, sid: linkTo });
         else jApply({ t: 'j:placeSet', pid, v });
@@ -2013,6 +2028,7 @@ function viewJournal(c) {
           </div>
           <div class="field"><label>Butin et récompenses ${jEd(cur, 'loot')}</label>${jField(sid, 'loot', cur.loot, 'rows="3" placeholder="Pièces, objets trouvés, promesses…"', true)}</div>
           ${mjSecretBlock('s', sid)}
+          ${mjNoteField('s', sid)}
           ${sh && !c.stub ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label>${bind(`secret.s.${sid}`, c.secret.s[sid] || '', 'area', 'rows="3" placeholder="Ce que tu gardes pour toi : soupçons, plans, secrets de ton personnage…"')}</div>` : ''}
         </div>
         <h3>Pistes et choses à faire</h3>
@@ -2347,7 +2363,9 @@ function creationDialog() {
       const trained = [...f.querySelectorAll('[name=sk]:checked')].map((x) => x.value);
       const c = R.newCharacter({ name, kin: f.kin.value, profession: f.profession.value, school: f.profession.value === 'mage' ? f.school.value : '', age: f.age.value, attrs, trained });
       logEntry(c, 'Création du personnage');
-      store.add(c);
+      // Bouton + d'un groupe dans la bannière : le personnage en fait partie ; sinon il n'est dans aucun groupe
+      if (ui.newInGroup) { c.groupId = ui.newInGroup; store.add(c); group.switchTo(c.groupId); } else { store.add(c); group.deactivate(); }
+      ui.newInGroup = null; setMjActive(false);
       ui.mode = 'libre'; ui.tab = 'fiche';
       render();
       toast(`${name} est prêt. Complète sa fiche en mode libre.`);
@@ -2839,7 +2857,7 @@ const A = {
     const mine = new Set(store.list().map((c) => c.id));
     const groupName = (id) => group.list.find((r) => r.id === id)?.name || '';
     // Partie d'un personnage : celle qu'il a retenue (sinon le groupe actif, si je n'en suis pas le MJ)
-    const gOf = (c) => c.groupId || (sh && !isMJ() ? sh.id : null);
+    const gOf = (c) => c.groupId || null;
     const charRow = (c, gid) => `<div class="char-row"><button type="button" data-id="${c.id}" class="${c.id === cur?.id && !cur?.stub ? 'on' : ''}"><span class="crest small">${esc((c.name || '?').charAt(0).toUpperCase())}</span><span><b>${esc(c.name || 'Sans nom')}</b><small>${esc([R.kinName(c), R.profName(c)].filter(Boolean).join(' · '))}</small></span></button>
         ${sh && gid === sh.id ? `<label class="check lend-check" title="Si tu es absent, les autres joueurs du groupe pourront le jouer (mode Jeu uniquement)"><input type="checkbox" data-lend="${c.id}" ${lentHere(c) ? 'checked' : ''}><span>Prêter</span></label>` : ''}</div>`;
     // Un bloc par groupe : mener la partie (MJ), mes personnages, les personnages prêtés
@@ -2854,7 +2872,7 @@ const A = {
           ${r.role === 'mj' ? `<button type="button" data-mjg="${r.id}" class="${cur?.stub && active ? 'on' : ''}"><span class="crest small">👑</span><span><b>Mener la partie</b><small>Onglets MJ, Journal, Groupe, Biblio</small></span></button>` : ''}
           ${chars.map((c) => charRow(c, r.id)).join('')}
           ${lent.map((p) => `<button type="button" data-guest="${p.id}" data-gid="${r.id}" class="${ui.guest?.id === p.id ? 'on' : ''}"><span class="crest small">🎭</span><span><b>${esc(p.name)}</b><small>prêté · joueur : ${esc(p.owner || '?')}</small></span><span class="btn small">Jouer</span></button>`).join('')}
-          ${r.role !== 'mj' && !chars.length && !lent.length ? '<p class="small muted">Aucun personnage dans ce groupe.</p>' : ''}
+          ${r.role !== 'mj' ? `<button type="button" class="pick-add" data-newin="${r.id}">${icon('plus')} Nouveau personnage dans ce groupe</button>` : ''}
         </div>
       </section>`;
     }).join('');
@@ -2866,17 +2884,18 @@ const A = {
         ${loose.length || !group.list.length ? `<section class="pick-group"><div class="pick-head"><b>${group.list.length ? 'Sans groupe' : 'Mes personnages'}</b>${group.list.length ? '<small>pas encore joués dans un groupe partagé</small>' : ''}</div>
           <div class="menu-list">${loose.map((c) => charRow(c, null)).join('') || '<p class="small muted">Aucun personnage.</p>'}</div></section>` : ''}
         <p class="small muted">Les personnages prêtés se jouent en mode Jeu uniquement, à la place d’un joueur absent.</p>`,
-      actions: [{ label: '👑 MJ d’une partie…', cls: 'ghost', onClick: () => { setTimeout(() => A.mjJoin()); } }, 'spacer', closeBtn, { label: `${icon('plus')} Nouveau`, primary: true, onClick: () => { setMjActive(false); setTimeout(creationDialog); } }],
+      actions: [{ label: '👑 MJ d’une partie…', cls: 'ghost', onClick: () => { setTimeout(() => A.mjJoin()); } }, 'spacer', closeBtn, { label: `${icon('plus')} Nouveau (sans groupe)`, primary: true, onClick: () => { ui.newInGroup = null; setTimeout(creationDialog); } }],
       onOpen: (f) => {
         f.querySelectorAll('[data-id]').forEach((b) => { b.onclick = () => {
           if (ui.guest) guestEnd();
           ui.mjView = null; setMjActive(false);
           store.select(b.dataset.id);
-          // Ce personnage joue dans une autre de mes parties : on y passe
+          // Le groupe affiché suit le personnage : le sien, ou aucun s'il n'est dans aucun groupe
           const c = store.current();
-          if (c?.groupId && c.groupId !== group.shared?.id && group.switchTo(c.groupId)) toast(`Partie « ${groupName(c.groupId)} »`);
+          if (c?.groupId && group.list.some((r) => r.id === c.groupId)) { if (c.groupId !== group.shared?.id) group.switchTo(c.groupId); } else group.deactivate();
           ui.mode = 'normal'; dlg.close(); render();
         }; });
+        f.querySelectorAll('[data-newin]').forEach((b) => { b.onclick = () => { dlg.close(); ui.newInGroup = b.dataset.newin; setTimeout(creationDialog); }; });
         f.querySelectorAll('[data-mjg]').forEach((b) => { b.onclick = () => {
           if (ui.guest) guestEnd();
           ui.mjView = null;
@@ -3174,6 +3193,30 @@ const A = {
   gShareCreate() { shareCreateDialog(); },
   gShareJoin() { shareJoinDialog(); },
   gShareCode() { shareCodeDialog(); },
+  // Personnage sans groupe : rejoindre un de mes groupes déjà connus (sans code)
+  gJoinKnown(el) {
+    const r = group.list.find((x) => x.id === el.dataset.id); if (!r) return;
+    linkChar(r.id); group.switchTo(r.id); render(); toast(`${C()?.name || 'Personnage'} rejoint « ${r.name} »`);
+  },
+  // Quitter le groupe : le personnage repasse sans groupe ; le compte quitte le groupe s'il n'y a plus personne à lui
+  gLeave() {
+    const sh = group.shared; if (!sh) return;
+    const c = C(); const asMJ = !!c?.stub;
+    const text = asMJ ? `Quitter « ${esc(sh.name)} » ? Tu ne seras plus son MJ.`
+      : `<b>${esc(c?.name || 'Ton personnage')}</b> quittera « ${esc(sh.name)} » et repassera sans groupe. Tu pourras revenir avec le code <b>${esc(sh.id)}</b>.`;
+    confirmDialog('Quitter le groupe', text, 'Quitter', async () => {
+      try {
+        if (asMJ) { await cloud.setGroupMJ(sh.id, '', '').catch(() => {}); setMjActive(false); await group.leave(); render(); toast('Groupe quitté'); return; }
+        if (c && !ui.guest && !ui.mjView) {
+          if (lentHere(c)) { group.apply({ t: 'p:unlend', id: c.id }, c.name); cloud.deletePerso(sh.id, c.id).catch(() => {}); }
+          delete c.lentTo; delete c.groupId; c.updatedAt = Date.now(); store.save();
+        }
+        const stillMine = store.list().some((x) => x.groupId === sh.id);
+        if (!stillMine && !isMJ()) await group.leave(); else group.deactivate();
+        render(); toast(stillMine || isMJ() ? `${c?.name || 'Personnage'} a quitté le groupe` : 'Groupe quitté');
+      } catch (e) { toast(e.message); }
+    });
+  },
   gAcct(el) { const a = G().accounts.find((x) => x.id === el.dataset.id); if (a) groupAccountMoveDialog(a, el.dataset.m); },
   gEditAcct(el) { const id = el.dataset.id; groupAccountDialog(id ? G().accounts.find((x) => x.id === id) : null); },
   gAddCarrier() { groupCarrierDialog(null); },
@@ -3353,6 +3396,7 @@ $app.addEventListener('input', (e) => {
   if (el.id === 'libSearch') { ui.libSearch = el.value; filterLib(); return; }
   if (el.id === 'jSearch') { ui.jSearch = el.value; filterJournal(); return; }
   if (el.dataset.jf || el.dataset.jt) { jSave(el, false); return; }
+  if (el.dataset.mjn && group.shared) { const [k, id] = el.dataset.mjn.split('|'); store.setMjNote(group.shared.id, k, id, el.value); return; }
   if (!el.dataset.bind) return;
   setPath(C(), el.dataset.bind, el.hasAttribute('data-num') ? num(el.value) : el.value);
   commit(false);
@@ -3430,7 +3474,14 @@ $app.addEventListener('submit', (e) => {
 // MJ sans personnage reconnu alors que la première page est affichée : on bascule sur l'onglet MJ
 // Groupe retrouvé dans le compte (autre appareil, réinstallation) : plus besoin de ressaisir le code
 store.onMyGroup((ref) => {
-  if (group.restore(ref)) { toast(`Groupe « ${ref.name || 'partagé'} » retrouvé`); if (!dlg.open) render(); }
+  const added = group.restore(ref);
+  if (!group.shared) {
+    const c = store.current();
+    const target = c?.groupId && group.list.some((r) => r.id === c.groupId) ? c.groupId
+      : !c ? group.list.find((r) => r.role === 'mj')?.id : null;
+    if (target) { group.switchTo(target); if (!c) setMjActive(true); if (!dlg.open) render(); return; }
+  }
+  if (added && !dlg.open) render();
 });
 function welcomeToMJ() {
   if (!$app.querySelector('.welcome') || !C()?.stub) return false;
@@ -3456,6 +3507,19 @@ group.onChange(() => {
   if (['groupe', 'journal', 'mj'].includes(ui.tab) && C() && !typing && !dlg.open && !document.querySelector('.sketch.full')) render();
 });
 
+// Passage à la v60 (une seule fois) : les personnages encore sans groupe étaient joués dans le groupe affiché
+if (!localStorage.getItem('dragonbane.v60link')) {
+  localStorage.setItem('dragonbane.v60link', '1');
+  const gid = group.shared?.id;
+  if (gid && group.list.find((r) => r.id === gid)?.role !== 'mj') store.list().forEach((c) => { if (!c.groupId) { c.groupId = gid; store.save(); } });
+}
+// Au lancement, le groupe affiché suit le personnage (sauf en mode MJ)
+{
+  const c = store.current();
+  if (c && !ui.mjActive) {
+    if (c.groupId && group.list.some((r) => r.id === c.groupId)) group.switchTo(c.groupId); else if (!c.groupId) group.deactivate();
+  }
+}
 render();
 store.sync();
 

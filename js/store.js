@@ -18,6 +18,8 @@ data.group = upgradeGroup(data.group || newGroup());
 // Croquis du journal : rangés à part des personnages (un document chacun en ligne) pour ne pas alourdir les fiches.
 // { id: { id, cid, strokes, updatedAt, deleted? } } — un croquis supprimé garde une trace (deleted) pour la synchro.
 data.sketches ??= {};
+// Notes privées du MJ, par groupe : { updatedAt, [gid]: { s: {session: texte}, n: {pnj: texte}, l: {lieu: texte} } }
+data.mjNotes ??= { updatedAt: 0 };
 
 let syncTimer = null;
 let onMyGroup = null; // appelé avec le groupe partagé enregistré dans le compte (voir group.restore)
@@ -85,6 +87,13 @@ export const store = {
   // Fiche jouée par un autre membre du groupe en ton absence (plus récente) : on la reprend
   replaceCharacter(c) { upgradeCharacter(c); data.characters[c.id] = c; markDirty(); },
   get group() { return data.group; },
+  mjNote(gid, kind, id) { return data.mjNotes[gid]?.[kind]?.[id] || ''; },
+  setMjNote(gid, kind, id, text) {
+    const g = (data.mjNotes[gid] ||= { s: {}, n: {}, l: {} });
+    g[kind] ||= {};
+    if (text) g[kind][id] = text; else delete g[kind][id];
+    data.mjNotes.updatedAt = Date.now(); markDirty();
+  },
   sketch(id) { const s = data.sketches[id]; return s && !s.deleted ? s : null; },
   // Enregistre un croquis sans redessiner l'appli (on est peut-être en train de dessiner)
   saveSketch(s) { s.updatedAt = Date.now(); delete s.deleted; data.sketches[s.id] = s; markDirty(); },
@@ -137,11 +146,11 @@ export const store = {
       const remote = await cloud.pull();
       const changed = merge(remote);
       if (remote.myGroup !== undefined) onMyGroup?.(remote.myGroup);
-      await cloud.push(data.characters, data.deleted, meta.lastPush, data.group, data.sketches);
+      await cloud.push(data.characters, data.deleted, meta.lastPush, data.group, data.sketches, data.mjNotes);
       meta.lastPush = start;
       meta.lastSync = Date.now();
       meta.dirty = Object.values(data.characters).some((c) => (c.updatedAt || 0) > start) || (data.group.updatedAt || 0) > start
-        || Object.values(data.sketches).some((s) => (s.updatedAt || 0) > start);
+        || Object.values(data.sketches).some((s) => (s.updatedAt || 0) > start) || (data.mjNotes.updatedAt || 0) > start;
       persist();
       setStatus(meta.dirty ? 'pending' : 'synced', `Synchronisé (${cloud.user().email})`, { reloaded: changed });
     } catch (e) {
@@ -181,6 +190,7 @@ function scheduleSync() {
 function merge(remote) {
   let changed = false;
   if (remote.group && (remote.group.updatedAt || 0) > (data.group.updatedAt || 0)) { data.group = upgradeGroup(remote.group); changed = true; }
+  if (remote.mjNotes && (remote.mjNotes.updatedAt || 0) > (data.mjNotes.updatedAt || 0)) { data.mjNotes = remote.mjNotes; changed = true; }
   for (const [id, s] of Object.entries(remote.sketches || {})) {
     if ((s.updatedAt || 0) > (data.sketches[id]?.updatedAt || 0)) { data.sketches[id] = s; changed = true; }
   }
