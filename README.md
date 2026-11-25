@@ -82,6 +82,10 @@ Si tu modifies le même personnage sur deux appareils sans réseau, c'est la ver
 
 Les noms français (compétences, états, capacités) sont des traductions libres et se modifient dans l'appli.
 
+## Joueur absent
+
+Un joueur peut **prêter** son personnage au groupe partagé (« Mes personnages » › « Prêter au groupe ») : une copie de sa fiche de jeu, sans notes secrètes, journal perso, PNJ ni lieux, est rangée dans `groups/{code}/media/perso_{id}` (même règle Firestore que les croquis). Les autres membres peuvent la jouer en **mode Jeu uniquement** ; leurs modifications sont reprises par la fiche du propriétaire dès que son appli la voit (la plus récente l'emporte, ses données privées sont conservées).
+
 ## Crédits
 
 - Pictogrammes des montures et véhicules : [game-icons.net](https://game-icons.net), licence [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) — *donkey* et *mounted-knight* par Skoll, *horse-head*, *old-wagon* et *wood-canoe* par Delapouite, *cartwheel*, *locked-chest* et *knapsack* par Lorc. Tracés repris tels quels, recolorés.

@@ -80,6 +80,8 @@ export const store = {
     markDirty();
   },
   save() { markDirty(); },
+  // Fiche jouée par un autre membre du groupe en ton absence (plus récente) : on la reprend
+  replaceCharacter(c) { upgradeCharacter(c); data.characters[c.id] = c; markDirty(); },
   get group() { return data.group; },
   sketch(id) { const s = data.sketches[id]; return s && !s.deleted ? s : null; },
   // Enregistre un croquis sans redessiner l'appli (on est peut-être en train de dessiner)

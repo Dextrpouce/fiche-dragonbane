@@ -196,6 +196,23 @@ export function watchMedia(g, id, onData, onError) {
 }
 export async function deleteMedia(g, id) { who(); await fb.deleteDoc(mediaDoc(g, id)); }
 
+// ----- Personnages prêtés au groupe (joueur absent) : groups/{code}/media/perso_{id} -----
+// Copie de la fiche de jeu (sans notes secrètes ni journal perso), lisible et modifiable par les membres.
+const persoDoc = (g, id) => mediaDoc(g, `perso_${id}`);
+export async function putPerso(g, c, owner) {
+  who();
+  await fb.setDoc(persoDoc(g, c.id), { kind: 'perso', json: JSON.stringify(c), owner: owner || '', updatedAt: c.updatedAt || Date.now() });
+}
+export async function getPerso(g, id) {
+  who();
+  const snap = await fb.getDoc(persoDoc(g, id));
+  return snap.exists() ? { c: JSON.parse(snap.data().json), owner: snap.data().owner || '' } : null;
+}
+export function watchPerso(g, id, onData, onGone) {
+  return fb.onSnapshot(persoDoc(g, id), (snap) => { if (snap.exists()) onData(JSON.parse(snap.data().json)); else onGone?.(); }, () => {});
+}
+export async function deletePerso(g, id) { who(); await fb.deleteDoc(persoDoc(g, id)); }
+
 export async function leaveGroup(id) {
   const u = who();
   await fb.runTransaction(db, async (tx) => {

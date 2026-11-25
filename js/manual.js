@@ -75,6 +75,10 @@ export const MANUAL = [
   ['Biblio', `
     <p>Pour consulter : armes, armures, matériel, sorts, tours, capacités et <b>règles</b> (rappels pour le combat : initiative, parer, esquiver, attaques spéciales, Dragon et Démon, 0 PV, états, peur, poison… et pour la magie : PVol et niveau de puissance, sorts préparés, grimoire, métal, incidents magiques, apprendre un sort). Choisis une rubrique ou tape un mot dans la recherche, puis touche une ligne pour voir le détail.</p>
     <p>Les noms sont des traductions libres et les effets sont résumés : le livre fait foi.</p>`],
+  ['Joueur absent', `
+    <p>Un joueur ne pourra pas venir ? Avant la séance, il ouvre <b>Mes personnages</b> (touche son nom en haut) et coche <b>« Prêter au groupe »</b>. Il faut un groupe partagé et être connecté.</p>
+    <p>Le jour de la séance, un autre joueur ouvre <b>Mes personnages</b> › « Personnages prêtés par le groupe » › <b>Jouer</b>. Un bandeau 🎭 rappelle qu’il joue à sa place : seul le mode <b>Jeu</b> est possible (ni mode libre, ni progression). Jets, PV, PVol, états, objets utilisés : tout est enregistré sur la fiche du joueur absent. « Rendre » revient à ton personnage.</p>
+    <p>Quand le joueur rouvre l’appli, sa fiche récupère tout ce qui s’est passé (PV perdus, compétences cochées par un Dragon ou un Démon…). Ses notes secrètes et son journal perso ne sont jamais prêtés. Décoche « Prêter au groupe » pour reprendre la main.</p>`],
   ['Sauvegarde et appareils', `
     <p>Tout est enregistré sur l’appareil : l’appli marche <b>sans internet</b>.</p>
     <p>Menu › <b>Sauvegarde en ligne</b> : connecte-toi avec ton compte Google ou avec un e-mail et un mot de passe (« Créer un compte » la première fois) pour retrouver tes personnages et le groupe sur tous tes appareils. La pastille du nuage indique l’état : verte = à jour, jaune = en attente d’envoi, rouge = connexion à refaire.</p>

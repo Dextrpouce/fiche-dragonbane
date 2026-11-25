@@ -59,7 +59,7 @@ function take(m, x) {
 const fail = (msg) => { throw Object.assign(new Error(msg), { invalid: true }); };
 const qtyTxt = (q) => (n(q) > 1 ? ` ×${q}` : '');
 
-export const EMPTY = () => ({ game: GAME, money: { or: 0, argent: 0, cuivre: 0 }, carriers: [], accounts: [], notes: '', log: [], journal: [], npcs: [], lieux: [] });
+export const EMPTY = () => ({ game: GAME, money: { or: 0, argent: 0, cuivre: 0 }, carriers: [], accounts: [], notes: '', log: [], journal: [], npcs: [], lieux: [], persos: [] });
 
 // ---------- Comptes : argent du groupe gardé ailleurs, dettes, projets ----------
 // bal (en cuivre) : dépôt = ce qui est gardé ; on nous doit = ce qu'on attend ; on doit = ce qu'on doit ;
@@ -82,6 +82,7 @@ const OP_CAT = {
   acct: 'comptes', acctAdd: 'comptes', acctEdit: 'comptes', acctDel: 'comptes',
   itemAdd: 'materiel', itemEdit: 'materiel', itemDel: 'materiel', itemMove: 'materiel', itemTake: 'materiel',
   carrierAdd: 'materiel', carrierEdit: 'materiel', carrierDel: 'materiel', saddle: 'materiel', harness: 'materiel',
+  'p:lend': 'persos', 'p:unlend': 'persos',
 };
 export function applyOp(s, op) {
   const e = applyOp0(s, op);
@@ -95,6 +96,16 @@ function applyOp0(s, op) {
   const item = (k, id) => k.items.find((x) => x.id === id) || fail('Objet introuvable (déjà déplacé ou supprimé ?)');
   const acct = (id) => s.accounts.find((x) => x.id === id) || fail('Compte introuvable (supprimé ?)');
   if (op.t.startsWith('j:')) return applyJournalOp(s, op); // journal de campagne partagé
+  // Personnages prêtés (la fiche elle-même est dans groups/{code}/media/perso_{id}) : liste visible de tous
+  if (op.t === 'p:lend') {
+    s.persos = [...(s.persos || []).filter((p) => p.id !== op.perso.id), op.perso];
+    return { text: `${op.perso.name} prêté au groupe par ${op.perso.owner}`, changed: true };
+  }
+  if (op.t === 'p:unlend') {
+    const p = (s.persos || []).find((x) => x.id === op.id);
+    s.persos = (s.persos || []).filter((x) => x.id !== op.id);
+    return { text: p ? `${p.name} n’est plus prêté au groupe` : '', changed: true };
+  }
   switch (op.t) {
     case 'money': {
       if (op.sign > 0) add(s.money, op.coins); else take(s.money, op.coins);

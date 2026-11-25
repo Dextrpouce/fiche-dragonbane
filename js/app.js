@@ -14,7 +14,8 @@ import { group, ACCOUNT_KINDS, fortune } from './group.js';
 const $app = document.getElementById('app');
 const dlg = document.getElementById('dlg');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-const C = () => store.current();
+// Personnage affiché : le tien, ou celui d'un joueur absent que tu joues (ui.guest, voir « Personnages prêtés »)
+const C = () => ui.guest || store.current();
 const num = (v) => (v === '' || v == null || isNaN(+v) ? 0 : +v);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const fmtDate = (t) => new Date(t).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' });
@@ -69,7 +70,7 @@ function toast(msg) {
 
 function commit(rerender = true) {
   C().updatedAt = Date.now();
-  store.save();
+  if (ui.guest) pushGuest(); else { store.save(); pushLent(C()); }
   if (rerender) render();
 }
 
@@ -250,10 +251,13 @@ function render() {
   const c = C();
   if (!c) { renderWelcome(); return; }
   if (ui.tab === 'magie' && !R.isCaster(c)) ui.tab = 'fiche';
+  if (ui.guest && ui.mode !== 'normal') ui.mode = 'normal'; // personnage prêté : ni mode libre ni progression
+  watchLent();
   const y = window.scrollY;
   const marked = c.skills.filter((s) => s.mark).length;
   $app.innerHTML = `<div class="shell mode-${ui.mode}">
     ${topbar(c)}
+    ${ui.guest ? `<div class="banner guest-banner">🎭<span>Tu joues <b>${esc(ui.guest.name)}</b> à la place de ${esc(ui.guestOwner || 'son joueur')} — mode Jeu uniquement, tout est enregistré sur sa fiche.</span><button class="btn small ghost-dark" data-act="guestEnd">Rendre</button></div>` : ''}
     ${isFree() ? `<div class="banner free-banner">${icon('edit')}<span><b>Mode libre</b> — touche une valeur pour la changer, sans jet ni contrainte.</span><button class="btn small ghost-dark" data-act="setMode" data-m="normal">Terminer</button></div>` : ''}
     ${isProg() ? `<div class="banner prog-banner">${icon('star')}<span><b>Progression</b> — ${marked} compétence${marked > 1 ? 's' : ''} cochée${marked > 1 ? 's' : ''}${c.pendingMarks ? `, <b>${c.pendingMarks}</b> coche${c.pendingMarks > 1 ? 's' : ''} de fin de séance à placer` : ''}. Touche une compétence pour la cocher.</span>
       <button class="btn small gold" data-act="advanceRolls" ${marked ? '' : 'disabled'}>${icon('d20')} Jets d’amélioration</button></div>` : ''}
@@ -544,7 +548,7 @@ function combatAbilities(c) {
 // Les données passent par group.js : chaque modification est une opération notée au journal (qui, quoi),
 // partagée en direct si le groupe est partagé.
 const G = () => group.state;
-const author = () => C()?.name || store.userEmail || 'Joueur';
+const author = () => (ui.guest ? `${ui.guest.name} (joué par ${store.current()?.name || 'un joueur'})` : C()?.name || store.userEmail || 'Joueur');
 // Applique une opération du groupe ; false (et message) si elle est impossible
 function gApply(op, okMsg = '') {
   try {
@@ -1302,10 +1306,99 @@ function viewCarnet(c) {
   </div>`;
 }
 
+// ----- Personnages prêtés au groupe : jouer le personnage d'un joueur absent -----
+// Le joueur coche « Prêter au groupe » : une copie de sa fiche de jeu (sans notes secrètes, journal perso,
+// PNJ ni lieux) va dans groups/{code}/media/perso_{id}, tenue à jour à chaque modification.
+// Un autre membre peut la jouer en mode Jeu seulement (ui.guest) : ses changements vont dans cette copie,
+// et le propriétaire les reprend dès que son appli la voit (PV, objets, compétences cochées…).
+const PRIVATE_KEYS = ['secret', 'journal', 'npcs', 'lieux', 'jImportHide'];
+const lendCopy = (c) => { const x = { ...c }; PRIVATE_KEYS.forEach((k) => delete x[k]); return x; };
+const ownerName = () => cloud.user()?.displayName || store.userEmail || 'un joueur';
+const lentHere = (c) => !!(group.shared && c?.lentTo === group.shared.id);
+let lendTimer = null;
+let lendWatch = null; let lendWatchId = null;
+let guestWatch = null;
+function pushLent(c, now = false) {
+  if (!lentHere(c) || !cloud.user()) return;
+  clearTimeout(lendTimer);
+  const send = () => cloud.putPerso(group.shared.id, lendCopy(c), ownerName()).catch((e) => toast(media.error() || e.message));
+  if (now) send(); else lendTimer = setTimeout(send, 2500);
+}
+function pushGuest() {
+  if (!ui.guest || !group.shared) return;
+  clearTimeout(lendTimer);
+  const g = ui.guest; const owner = ui.guestOwner;
+  lendTimer = setTimeout(() => cloud.putPerso(group.shared.id, lendCopy(g), owner).catch((e) => toast(e.message)), 1500);
+}
+// Le propriétaire reprend la fiche jouée en son absence (en gardant ses notes privées)
+function adoptLent(remote) {
+  const local = store.list().find((x) => x.id === remote.id);
+  if (!local || (remote.updatedAt || 0) <= (local.updatedAt || 0)) return false;
+  const merged = { ...remote };
+  PRIVATE_KEYS.forEach((k) => { if (local[k] !== undefined) merged[k] = local[k]; });
+  merged.lentTo = local.lentTo;
+  store.replaceCharacter(merged);
+  return true;
+}
+// Suivi en direct de mes personnages prêtés (appelé à chaque affichage ; ne fait rien si rien n'a changé)
+function watchLent() {
+  const c = store.current();
+  const want = !ui.guest && lentHere(c) && cloud.user() ? `${group.shared.id}/${c.id}` : null;
+  if (want === lendWatchId) return;
+  lendWatch?.(); lendWatch = null; lendWatchId = want;
+  if (!want) return;
+  lendWatch = cloud.watchPerso(group.shared.id, c.id, (remote) => {
+    if (!adoptLent(remote)) return;
+    toast(`${remote.name} a été joué en ton absence : fiche mise à jour`);
+    const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+    if (!typing && !dlg.open) render();
+  });
+}
+async function lendToggle(c, on) {
+  const g = group.shared; if (!g) return;
+  if (!cloud.user()) { toast('Connecte-toi d’abord (le nuage en haut)'); return; }
+  if (on) {
+    c.lentTo = g.id; c.updatedAt = Date.now(); store.save();
+    try { await cloud.putPerso(g.id, lendCopy(c), ownerName()); } catch (e) { delete c.lentTo; store.save(); toast(media.error() || e.message); render(); return; }
+    group.apply({ t: 'p:lend', perso: { id: c.id, name: c.name, owner: ownerName(), sub: [R.kinName(c), R.profName(c)].filter(Boolean).join(' · ') } }, c.name);
+    toast(`${c.name} est prêté au groupe`);
+  } else {
+    delete c.lentTo; c.updatedAt = Date.now(); store.save();
+    cloud.deletePerso(g.id, c.id).catch(() => {});
+    group.apply({ t: 'p:unlend', id: c.id }, c.name);
+    toast(`${c.name} n’est plus prêté`);
+  }
+  render();
+}
+async function guestStart(id) {
+  const g = group.shared; if (!g) return;
+  try {
+    const got = await cloud.getPerso(g.id, id);
+    if (!got) { toast('Ce personnage n’est plus prêté'); return; }
+    ui.guest = R.upgradeCharacter(got.c); ui.guestOwner = got.owner; ui.mode = 'normal';
+    guestWatch?.();
+    // Le propriétaire revient et modifie sa fiche, ou arrête de la prêter
+    guestWatch = cloud.watchPerso(g.id, id, (remote) => {
+      if (!ui.guest || ui.guest.id !== remote.id || (remote.updatedAt || 0) <= (ui.guest.updatedAt || 0)) return;
+      ui.guest = R.upgradeCharacter(remote);
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+      if (!typing && !dlg.open) render();
+    }, () => { if (ui.guest?.id === id) { guestEnd(); toast('Ce personnage n’est plus prêté'); } });
+    render(); window.scrollTo(0, 0);
+    toast(`Tu joues ${ui.guest.name} à la place de ${got.owner || 'son joueur'}`);
+  } catch (e) { toast(media.error() || e.message); }
+}
+function guestEnd() {
+  if (ui.guest) { clearTimeout(lendTimer); cloud.putPerso(group.shared.id, lendCopy(ui.guest), ui.guestOwner).catch(() => {}); }
+  guestWatch?.(); guestWatch = null;
+  ui.guest = null; ui.guestOwner = '';
+  render();
+}
+
 // ----- Historique des modifications (à la demande : menu ⋮ ou bouton discret) -----
 const LOG_CATS = {
   caisse: ['Caisse', '🪙'], comptes: ['Comptes', '🏦'], materiel: ['Matériel', '🎒'], vente: ['Ventes', '🏷️'], notes: ['Notes', '📝'],
-  session: ['Sessions', '📖'], pnj: ['PNJ', '👤'], lieu: ['Lieux', '📍'], piste: ['Pistes', '☑️'], autre: ['Autre', '•'],
+  session: ['Sessions', '📖'], pnj: ['PNJ', '👤'], lieu: ['Lieux', '📍'], piste: ['Pistes', '☑️'], persos: ['Personnages prêtés', '🎭'], autre: ['Autre', '•'],
 };
 const JOURNAL_CATS = ['session', 'pnj', 'lieu', 'piste'];
 // Type d'une ligne (les plus anciennes n'en avaient pas : on le devine d'après le texte)
@@ -2350,8 +2443,10 @@ function editSkill(s) {
 const A = {
   tab(el) { ui.tab = el.dataset.tab; localStorage.setItem('dragonbane.tab', ui.tab); render(); window.scrollTo(0, 0); },
   skillFilter(el) { ui.skillFilter = el.dataset.f; localStorage.setItem('dragonbane.skillFilter', ui.skillFilter); render(); },
-  setMode(el) { ui.mode = el.dataset.m; render(); },
+  setMode(el) { if (ui.guest && el.dataset.m !== 'normal') { toast('Personnage prêté : mode Jeu uniquement'); return; } ui.mode = el.dataset.m; render(); },
+  guestEnd() { guestEnd(); },
   modeMenu() {
+    if (ui.guest) { toast('Personnage prêté : mode Jeu uniquement'); return; }
     openDialog({
       title: 'Mode de la fiche',
       body: `<div class="modes">${Object.entries(MODES).map(([k, m]) => `<button type="button" class="mode-opt ${ui.mode === k ? 'on' : ''}" data-m="${k}">${icon(m.icon)}<span><b>${m.label}</b><small>${m.desc}</small></span></button>`).join('')}</div>`,
@@ -2422,16 +2517,27 @@ const A = {
     });
   },
   characters() {
-    const cur = C();
+    const cur = C(); const sh = group.shared;
+    const mine = new Set(store.list().map((c) => c.id));
+    const lent = sh ? (G().persos || []).filter((p) => !mine.has(p.id)) : [];
     openDialog({
       title: 'Mes personnages',
-      body: `<div class="menu-list">${store.list().map((c) => `<button type="button" data-id="${c.id}" class="${c.id === cur?.id ? 'on' : ''}"><span class="crest small">${esc((c.name || '?').charAt(0).toUpperCase())}</span><span><b>${esc(c.name || 'Sans nom')}</b><small>${esc([R.kinName(c), R.profName(c)].filter(Boolean).join(' · '))}</small></span></button>`).join('')}</div>`,
+      body: `<div class="menu-list">${store.list().map((c) => `<div class="char-row"><button type="button" data-id="${c.id}" class="${c.id === cur?.id ? 'on' : ''}"><span class="crest small">${esc((c.name || '?').charAt(0).toUpperCase())}</span><span><b>${esc(c.name || 'Sans nom')}</b><small>${esc([R.kinName(c), R.profName(c)].filter(Boolean).join(' · '))}</small></span></button>
+          ${sh ? `<label class="check lend-check" title="Si tu es absent, les autres joueurs du groupe pourront le jouer (mode Jeu uniquement)"><input type="checkbox" data-lend="${c.id}" ${lentHere(c) ? 'checked' : ''}><span>Prêter au groupe</span></label>` : ''}</div>`).join('')}</div>
+        ${sh ? `<h3>Personnages prêtés par le groupe</h3>
+          ${lent.length ? `<div class="menu-list">${lent.map((p) => `<button type="button" data-guest="${p.id}" class="${ui.guest?.id === p.id ? 'on' : ''}"><span class="crest small">🎭</span><span><b>${esc(p.name)}</b><small>${esc(p.sub || '')} · joueur : ${esc(p.owner || '?')}</small></span><span class="btn small">Jouer</span></button>`).join('')}</div>`
+            : '<p class="small muted">Aucun pour l’instant. Un joueur qui sera absent coche « Prêter au groupe » sur son personnage : vous pourrez alors le jouer à sa place (mode Jeu uniquement).</p>'}` : ''}`,
       actions: [closeBtn, { label: `${icon('plus')} Nouveau`, primary: true, onClick: () => { setTimeout(creationDialog); } }],
-      onOpen: (f) => f.querySelectorAll('[data-id]').forEach((b) => { b.onclick = () => { store.select(b.dataset.id); ui.mode = 'normal'; dlg.close(); render(); }; }),
+      onOpen: (f) => {
+        f.querySelectorAll('[data-id]').forEach((b) => { b.onclick = () => { if (ui.guest) guestEnd(); store.select(b.dataset.id); ui.mode = 'normal'; dlg.close(); render(); }; });
+        f.querySelectorAll('[data-guest]').forEach((b) => { b.onclick = () => { dlg.close(); guestStart(b.dataset.guest); }; });
+        f.querySelectorAll('[data-lend]').forEach((x) => { x.onchange = () => { const c = store.list().find((y) => y.id === x.dataset.lend); if (c) lendToggle(c, x.checked); }; });
+      },
     });
   },
   newCharacter() { creationDialog(); },
   deleteCharacter() {
+    if (ui.guest) { toast('Personnage prêté : seul son joueur peut le supprimer'); return; }
     const c = C();
     confirmDialog('Supprimer le personnage', `Supprimer <b>${esc(c.name)}</b> sur tous tes appareils ? Pense à l’exporter d’abord si tu veux le garder.`, 'Supprimer', () => { store.remove(c.id); ui.mode = 'normal'; render(); toast('Personnage supprimé'); });
   },
@@ -2989,4 +3095,4 @@ if ('serviceWorker' in navigator) {
 }
 
 // Pour le débogage dans la console
-window.__db = { store, R, getPath, group };
+window.__db = { store, R, getPath, group, ui, render };
