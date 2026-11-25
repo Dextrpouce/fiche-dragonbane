@@ -74,18 +74,26 @@ export async function pull() {
   const deleted = {};
   let group = null;
   const sketches = {};
+  let myGroup;
   snap.forEach((doc) => {
     const v = doc.data();
     // Croquis du journal : champ « sketch » (les anciennes versions de l'appli les ignorent)
     if (doc.id.startsWith(SKETCH)) { if (v.sketch) sketches[doc.id.slice(SKETCH.length)] = JSON.parse(v.sketch); return; }
+    // Mon groupe partagé (pour le retrouver sur tous mes appareils sans ressaisir le code)
+    if (doc.id === MY_GROUP) { try { myGroup = v.ref ? JSON.parse(v.ref) : null; } catch { /* illisible */ } return; }
     // Le groupe est rangé dans le champ « group » (pas « json ») : les anciennes versions l'ignorent
     if (doc.id === GROUP_ID) { if (v.group) group = JSON.parse(v.group); return; }
     if (v.deleted) deleted[doc.id] = v.updatedAt || 0;
     else if (v.json) characters[doc.id] = JSON.parse(v.json);
   });
-  return { characters, deleted, group, sketches };
+  return { characters, deleted, group, sketches, myGroup };
 }
 const GROUP_ID = '__groupe';
+const MY_GROUP = '__monGroupe';
+// Mon groupe partagé, rangé dans mon compte : { id, name } (ref vide = je n'en ai pas)
+export async function setMyGroup(ref) {
+  await fb.setDoc(fb.doc(col(), MY_GROUP), { ref: ref ? JSON.stringify(ref) : '', updatedAt: Date.now() });
+}
 const SKETCH = '__croquis_';
 
 // Envoie les personnages modifiés depuis la dernière synchro

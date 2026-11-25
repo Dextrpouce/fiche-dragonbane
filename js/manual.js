@@ -64,6 +64,7 @@ export const MANUAL = [
     <p><b>Notes secrètes</b> 🔒 : dans le journal du groupe, chaque session et chaque fiche PNJ ont un champ « Mes notes secrètes ». Il est rangé dans ta fiche, pas dans le groupe : toi seul le vois (sur tous tes appareils).</p>`],
   ['Groupe', `
     <p><b>Groupe partagé</b> : touche « Partager ce groupe » pour obtenir un code, et donne-le aux autres joueurs. Chacun touche « Rejoindre avec un code » sur son téléphone (connecté avec son propre compte). Tout le monde voit et modifie la même caisse et le même matériel, en direct.</p>
+    <p>Ton groupe partagé est enregistré <b>dans ton compte</b> : sur un autre appareil (ou après une réinstallation), connecte-toi et il revient tout seul, sans ressaisir le code (et le MJ retrouve son rôle). « Quitter » l’efface aussi de ton compte.</p>
     <p>Chaque modification est notée (quand, quoi, et qui). Cet <b>historique</b> ne s’affiche qu’à la demande : bouton « Historique des modifications » en bas de l’onglet Groupe, ou menu ⋮. Il se filtre par type : caisse, comptes, matériel, ventes, notes, sessions, PNJ, lieux, pistes. Sans réseau, tes modifications attendent (⏳) et partent dès le retour du réseau.</p>
     <ul>
       <li><b>Caisse</b> : Recette ou Dépense. Coche la case pour prendre l’argent dans ta bourse ou l’y verser. La dernière opération s’annule avec ↶ dans l’historique.</li>

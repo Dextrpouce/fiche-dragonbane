@@ -21,6 +21,7 @@ let watching = null;
 let error = '';
 let flushing = false;
 let retryTimer = null;
+let savedRef = ''; // groupe déjà enregistré dans le compte pendant cette session
 const listeners = new Set();
 const emit = () => listeners.forEach((fn) => fn());
 const save = () => {
@@ -304,6 +305,8 @@ export const group = {
   refresh() {
     const id = cur?.id;
     if (!id || !cloud.user()) { stop?.(); stop = null; watching = null; return; }
+    const ref = JSON.stringify({ id, name: cur.name });
+    if (savedRef !== ref) { savedRef = ref; cloud.setMyGroup({ id, name: cur.name }).catch(() => { savedRef = ''; }); }
     if (watching !== id) {
       stop?.();
       watching = id;
@@ -329,6 +332,12 @@ export const group = {
     cur = { id, name, members: {}, state: EMPTY(), updatedAt: 0 }; queue = []; save(); this.refresh(); emit();
     return name;
   },
+  // Groupe enregistré dans mon compte : on le reprend si cet appareil n'en a pas (déjà membre : pas de code à ressaisir)
+  restore(ref) {
+    if (cur || !ref?.id) return false;
+    cur = { id: ref.id, name: ref.name || 'Groupe', members: {}, state: EMPTY(), updatedAt: 0 }; queue = []; save(); this.refresh(); emit();
+    return true;
+  },
   // Entrer dans un groupe comme meneur de jeu, avec le code MJ donné par l'administrateur
   async joinAsMJ(code) {
     const c = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -345,6 +354,8 @@ export const group = {
     const id = cur?.id;
     stop?.(); stop = null; watching = null;
     cur = null; queue = []; error = ''; save(); emit();
+    savedRef = '';
+    cloud.setMyGroup(null).catch(() => {});
     if (id) await cloud.leaveGroup(id).catch(() => {});
   },
 

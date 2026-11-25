@@ -20,6 +20,7 @@ data.group = upgradeGroup(data.group || newGroup());
 data.sketches ??= {};
 
 let syncTimer = null;
+let onMyGroup = null; // appelé avec le groupe partagé enregistré dans le compte (voir group.restore)
 let syncing = false;
 let again = false;
 const listeners = new Set();
@@ -39,6 +40,7 @@ const config = () => meta.firebase || (cloud.isConfigured(FIREBASE_CONFIG) ? FIR
 
 export const store = {
   onStatus(fn) { listeners.add(fn); },
+  onMyGroup(fn) { onMyGroup = fn; },
   get status() { return status; },
   get meta() { return meta; },
   get configured() { return !!config(); },
@@ -134,6 +136,7 @@ export const store = {
       const start = Date.now();
       const remote = await cloud.pull();
       const changed = merge(remote);
+      if (remote.myGroup !== undefined) onMyGroup?.(remote.myGroup);
       await cloud.push(data.characters, data.deleted, meta.lastPush, data.group, data.sketches);
       meta.lastPush = start;
       meta.lastSync = Date.now();

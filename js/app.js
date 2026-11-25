@@ -250,7 +250,8 @@ function renderWelcome() {
       <p class="small muted" style="margin:14px 0 0">Tu as déjà un personnage sur un autre appareil ? Touche le <b>nuage</b> pour te connecter : il reviendra tout seul. Tu as un fichier ? Menu <b>⋮</b> › Importer.</p>
     </section></main>
   </div>`;
-  if (!welcomeOpened && !dlg.open) { welcomeOpened = true; setTimeout(() => { if (!C() && !dlg.open) A.newCharacter(); }, 300); }
+  // Création proposée d'office… sauf sur un appareil relié à un groupe (sans doute le MJ, reconnu dès la connexion)
+  if (!welcomeOpened && !dlg.open && !group.shared) { welcomeOpened = true; setTimeout(() => { if (!C() && !dlg.open) A.newCharacter(); }, 300); }
 }
 
 function render() {
@@ -1379,6 +1380,7 @@ const mjData = {};             // uid du joueur → personnages
 const mjLive = {};             // id → copie prêtée en cours de jeu (plus récente que la fiche reçue du joueur)
 const mjLiveWatches = new Map();
 const mjWatches = new Map();   // uid → arrêt du suivi
+const mjErrBy = {};            // uid → dernière erreur de lecture
 let mjErr = '';
 function mjWatch() {
   if (!isMJ()) { mjWatches.forEach((stop) => stop()); mjWatches.clear(); mjLiveWatches.forEach((stop) => stop()); mjLiveWatches.clear(); return; }
@@ -1397,13 +1399,14 @@ function mjWatch() {
   for (const owner of Object.keys(group.shared.members || {})) {
     if (mjWatches.has(owner)) continue;
     mjWatches.set(owner, cloud.watchMJPersos(g, owner, (list) => {
-      mjData[owner] = list; mjErr = '';
+      mjData[owner] = list; mjErr = ''; delete mjErrBy[owner];
       if (ui.mjView) { const fresh = list.find((x) => x.id === ui.mjView.id); if (fresh) ui.mjView = R.upgradeCharacter(fresh); }
       const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
       if (['mj'].includes(ui.tab) && !typing && !dlg.open) render();
     }, (e) => {
       // Un suivi refusé s'arrête définitivement : on l'oublie pour le relancer dans 30 s
       mjWatches.delete(owner);
+      mjErrBy[owner] = e?.code === 'permission-denied' ? 'lecture refusée par Firebase' : (e?.message || 'erreur');
       setTimeout(() => { if (isMJ()) mjWatch(); }, 30000);
       mjErr = e?.code === 'permission-denied' ? 'Lecture refusée par Firebase : ajoute la règle « mj » (voir le manuel)' : e.message;
       if (ui.tab === 'mj') render();
@@ -1459,7 +1462,17 @@ function viewMJ() {
       <h2>Meneur de jeu</h2>
       <p class="small muted">Toutes les fiches du groupe « ${esc(sh.name)} », mises à jour en direct, notes privées comprises. Touche « Fiche complète » pour tout voir (lecture seule).</p>
       ${mjErr ? `<p class="small bad">${esc(mjErr)}</p>` : ''}
-      ${waiting.length ? `<p class="small">En attente des fiches de : ${waiting.map(esc).join(', ')} (elles arrivent quand chacun ouvre l’appli, connecté).</p>` : ''}
+      <details class="mj-link" ${cards ? '' : 'open'}><summary class="small">État de la liaison : groupe « ${esc(sh.name)} » · code ${esc(sh.id)} · ${Object.keys(members).length} membre(s)</summary>
+        ${Object.entries(members).map(([owner, name]) => {
+          const list = mjData[owner] || [];
+          const last = list.reduce((m, x) => Math.max(m, x.updatedAt || 0), 0);
+          const state = owner === cloud.uid() ? '<span class="muted">toi (MJ)</span>'
+            : list.length ? `<span class="good">${list.length} fiche${list.length > 1 ? 's' : ''} reçue${list.length > 1 ? 's' : ''}${last ? ` · mise à jour ${fmtWhen(last)}` : ''}</span>`
+            : mjErrBy[owner] ? `<span class="bad">${esc(mjErrBy[owner])}</span>`
+            : '<span class="muted">aucune fiche reçue : il doit ouvrir l’appli (version à jour), connecté, et voir « ✓ Tes fiches sont à jour chez le MJ » dans l’onglet Groupe</span>';
+          return `<p class="small mj-member"><b>${esc(name)}</b> — ${state}</p>`;
+        }).join('')}
+      </details>
     </section>
     <div class="mj-grid span-all">${cards || '<p class="empty">Aucune fiche reçue pour l’instant.</p>'}</div>
   </div>`;
@@ -3371,10 +3384,23 @@ $app.addEventListener('submit', (e) => {
   document.querySelector('[data-form=quickItem] input')?.focus();
 });
 
+// MJ sans personnage reconnu alors que la première page est affichée : on bascule sur l'onglet MJ
+// Groupe retrouvé dans le compte (autre appareil, réinstallation) : plus besoin de ressaisir le code
+store.onMyGroup((ref) => {
+  if (group.restore(ref)) { toast(`Groupe « ${ref.name || 'partagé'} » retrouvé`); if (!dlg.open) render(); }
+});
+function welcomeToMJ() {
+  if (!$app.querySelector('.welcome') || !C()?.stub) return false;
+  if (dlg.open && dlg.querySelector('h2')?.textContent === 'Nouveau personnage') dlg.close();
+  if (dlg.open) return false;
+  ui.tab = 'mj'; render(); return true;
+}
 store.onStatus((st, info) => {
   const btn = document.getElementById('syncBtn');
   if (btn) { btn.className = `icon-btn sync-${st.state}`; btn.title = st.message; }
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+  // MJ sans personnage : tant que le compte n'est pas reconnu, la première page s'affiche ; on redessine dès qu'il l'est
+  if (welcomeToMJ()) { group.refresh(); mjSync(); return; }
   if (info?.reloaded && !typing && !dlg.open) render();
   group.refresh();
   mjSync();
@@ -3383,7 +3409,8 @@ store.onStatus((st, info) => {
 group.onChange(() => {
   mjSync(); // un MJ vient d'être désigné : envoyer mes fiches sans attendre
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
-  if (['groupe', 'journal'].includes(ui.tab) && C() && !typing && !dlg.open && !document.querySelector('.sketch.full')) render();
+  if (welcomeToMJ()) return;
+  if (['groupe', 'journal', 'mj'].includes(ui.tab) && C() && !typing && !dlg.open && !document.querySelector('.sketch.full')) render();
 });
 
 render();
