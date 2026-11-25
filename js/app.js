@@ -1777,7 +1777,7 @@ function npcDialog(npc, linkTo = null) {
         ${F.select('attitude', 'Attitude envers le groupe', cur.attitude, Object.entries(NPC_ATT).map(([k, [l]]) => [k, l]))}
         ${F.text('place', 'Où le trouver', cur.place, '', 'placeholder="Ex. Atelier près du port"')}
         ${F.area('notes', group.shared ? 'Notes (partagées avec le groupe)' : 'Notes', cur.notes)}
-        ${group.shared && !C().stub ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label><textarea name="secret" rows="2">${esc(C().secret.n[npc?.id] || '')}</textarea></div>` : ''}
+        ${group.shared && !C().stub ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi${group.shared?.mj ? " et le MJ" : " seul"}</small></label><textarea name="secret" rows="2">${esc(C().secret.n[npc?.id] || '')}</textarea></div>` : ''}
       </div>
       ${isMJ() ? `<div class="field full j-secret mj-own"><label>👑 Notes du MJ <small>visibles par toi seul</small></label><textarea name="mjnote" rows="3">${esc(npc ? store.mjNote(group.shared.id, 'n', npc.id) : '')}</textarea></div>` : ''}
       ${npc ? mjSecretBlock('n', npc.id) : ''}
@@ -1886,7 +1886,7 @@ function placeDialog(lieu, linkTo = null) {
       <div class="fields">
         ${F.text('where', 'Où, comment y aller', cur.where, 'full', 'placeholder="Ex. Deux jours au nord, après le pont"')}
         ${F.area('notes', group.shared ? 'Notes (partagées avec le groupe)' : 'Notes', cur.notes)}
-        ${group.shared && !C().stub ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label><textarea name="secret" rows="2">${esc(C().secret.l[lieu?.id] || '')}</textarea></div>` : ''}
+        ${group.shared && !C().stub ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi${group.shared?.mj ? " et le MJ" : " seul"}</small></label><textarea name="secret" rows="2">${esc(C().secret.l[lieu?.id] || '')}</textarea></div>` : ''}
       </div>
       ${j.npcs.length ? `<p class="small"><b>PNJ sur place</b></p><div class="place-npcs">${j.npcs.map((n) => `<label class="check"><input type="checkbox" name="npc_${n.id}" ${(cur.npcIds || []).includes(n.id) ? 'checked' : ''}><span>${esc(n.name)}</span></label>`).join('')}</div>` : ''}
       ${isMJ() ? `<div class="field full j-secret mj-own"><label>👑 Notes du MJ <small>visibles par toi seul</small></label><textarea name="mjnote" rows="3">${esc(lieu ? store.mjNote(group.shared.id, 'l', lieu.id) : '')}</textarea></div>` : ''}
@@ -2029,7 +2029,7 @@ function viewJournal(c) {
           <div class="field"><label>Butin et récompenses ${jEd(cur, 'loot')}</label>${jField(sid, 'loot', cur.loot, 'rows="3" placeholder="Pièces, objets trouvés, promesses…"', true)}</div>
           ${mjSecretBlock('s', sid)}
           ${mjNoteField('s', sid)}
-          ${sh && !c.stub ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label>${bind(`secret.s.${sid}`, c.secret.s[sid] || '', 'area', 'rows="3" placeholder="Ce que tu gardes pour toi : soupçons, plans, secrets de ton personnage…"')}</div>` : ''}
+          ${sh && !c.stub ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi${group.shared?.mj ? " et le MJ" : " seul"}</small></label>${bind(`secret.s.${sid}`, c.secret.s[sid] || '', 'area', 'rows="3" placeholder="Ce que tu gardes pour toi : soupçons, plans, secrets de ton personnage…"')}</div>` : ''}
         </div>
         <h3>Pistes et choses à faire</h3>
         ${(cur.todos || []).map((t) => `<div class="j-todo-row ${t.done ? 'done' : ''}">
