@@ -332,9 +332,9 @@ export function rollExpr(expr) {
 
 // Jet de D20 sous une valeur, avec avantages (boons) et désavantages (banes) qui s'annulent
 export function rollD20(target, boons = 0, banes = 0) {
+  // Un D20, plus un par avantage (ou désavantage) net : on garde le plus petit (ou le plus grand)
   const net = boons - banes;
-  const dice = [d(20)];
-  if (net !== 0) dice.push(d(20));
+  const dice = Array.from({ length: 1 + Math.abs(net) }, () => d(20));
   const kept = net > 0 ? Math.min(...dice) : net < 0 ? Math.max(...dice) : dice[0];
   const dragon = kept === 1;
   const demon = kept === 20;

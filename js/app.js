@@ -1333,7 +1333,12 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
       ${boosts.length ? `<p class="small center boon">Avantage : ${esc(boosts.join(', '))}</p>` : ''}
       ${reasons.length ? `<p class="small center bad">Désavantage : ${esc(reasons.join(', '))}</p>` : ''}
       <div class="roll-zone">
-        ${r ? `<div class="dice">${r.dice.map((v, i) => `<span class="die ${r.dice.length > 1 && v !== r.kept ? 'drop' : ''} ${v === 1 ? 'dragon' : v === 20 ? 'demon' : ''}" style="animation-delay:${i * 80}ms">${v}</span>`).join('')}</div>${verdict}` : `<div class="dice idle"><span class="die">${icon('d20')}</span></div>`}
+        ${r ? `<div class="dice">${r.dice.map((v, i) => `<span class="die ${r.dice.length > 1 && v !== r.kept ? 'drop' : ''} ${v === 1 ? 'dragon' : v === 20 ? 'demon' : ''}" style="animation-delay:${i * 80}ms">${v}</span>`).join('')}</div>${verdict}` : (() => {
+          // Avant le jet : autant de dés que ceux qui seront lancés, et lequel on gardera
+          const net = st.boons - st.banes; const n = 1 + Math.abs(net);
+          return `<div class="dice idle">${`<span class="die">${icon('d20')}</span>`.repeat(n)}</div>
+            <p class="small center muted dice-count">${n === 1 ? '1 dé' : `${n} dés : on garde le plus ${net > 0 ? 'petit' : 'grand'}`}</p>`;
+        })()}
         ${st.msg ? `<p class="small center">${st.msg}</p>` : ''}
         ${st.dmg ? `<div class="dmg"><span>Dégâts</span><b>${st.dmg.total}</b><small>${esc(st.dmg.detail)}</small></div>` : ''}
       </div>
