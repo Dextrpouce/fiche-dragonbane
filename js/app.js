@@ -1612,7 +1612,7 @@ function viewJournal(c) {
   const mine = sh ? { s: c.journal.filter((s) => !list.some((x) => x.id === s.id)).length, n: c.npcs.filter((n) => !j.npcs.some((x) => x.id === n.id)).length + c.lieux.filter((l) => !j.lieux.some((x) => x.id === l.id)).length } : null;
   const shareInfo = sh ? `<p class="small j-shared">${icon('users')} Journal partagé avec le groupe « ${esc(sh.name)} » : tout le monde le voit et le complète.</p>
       ${media.error() ? `<p class="small bad">${esc(media.error())}</p>` : ''}
-      ${mine.s || mine.n ? `<button class="btn ghost small block" data-act="jImport">${icon('upload')} Verser mon journal perso (${mine.s} session${mine.s > 1 ? 's' : ''}, ${mine.n} fiche${mine.n > 1 ? 's' : ''} PNJ et lieux)</button>` : ''}` : '';
+      ${(mine.s || mine.n) && !(c.jImportHide || []).includes(sh.id) ? `<p class="small j-import">${icon('upload')}<a href="#" data-act="jImport">Verser mon journal perso</a> <span class="muted">(${mine.s} session${mine.s > 1 ? 's' : ''}, ${mine.n} fiche${mine.n > 1 ? 's' : ''})</span><button class="j-import-x" data-act="jImportHide" title="Ne plus proposer pour ce groupe (reste possible depuis le menu ⋮)">✕ Ne plus proposer</button></p>` : ''}` : '';
   if (!list.length) {
     return `<section class="card journal-empty">
       <h2>Journal de campagne</h2>
@@ -2399,6 +2399,7 @@ const A = {
         <button type="button" data-m="importFile">${icon('upload')} Importer un fichier</button>
         <button type="button" data-m="cloudMenu">${icon('cloud')} Sauvegarde en ligne</button>
         <button type="button" data-m="history">${icon('history')} Historique des modifications</button>
+        ${group.shared && C()?.journal?.length ? `<button type="button" data-m="jImport">${icon('upload')} Verser mon journal perso dans le groupe</button>` : ''}
         <button type="button" data-m="manual">${icon('book')} Manuel d’utilisation</button>
         <button type="button" data-m="soundToggle">${icon('d20')} Son des dés : ${snd.soundOn() ? 'activé' : 'coupé'}</button>
       </div>
@@ -2469,6 +2470,12 @@ const A = {
     jApply({ t: 'j:sketch', sid: s.id, mid: id });
   },
   // Verser son journal personnel dans celui du groupe (images et croquis copiés aussi)
+  // Ne plus proposer de verser le journal perso dans ce groupe (reste possible depuis le menu ⋮)
+  jImportHide() {
+    const c = C(); const id = group.shared?.id; if (!id) return;
+    c.jImportHide = [...new Set([...(c.jImportHide || []), id])];
+    commit(); toast('Proposition masquée. Tu peux toujours verser ton journal depuis le menu ⋮.');
+  },
   jImport() {
     const c = C();
     confirmDialog('Verser mon journal', `Copier tes ${c.journal.length} session(s), ${c.npcs.length} PNJ et ${c.lieux.length} lieu(x) dans le journal du groupe ? Les autres joueurs les verront. Ton journal personnel reste intact.`, 'Verser', async () => {
