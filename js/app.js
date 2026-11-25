@@ -921,8 +921,11 @@ function viewBiblio() {
       <h3>Capacités innées des peuples</h3>${R.KIN_ABILITIES.map((h) => row(h.name, esc(h.req), `${stats([['Peuple', h.req], ['Coût', h.wp ? `${h.wp} PVol` : '—']])}<p class="small">${esc(h.desc)}</p>`, `${h.name} ${h.desc} ${h.req}`)).join('')}`;
   }
   if (sec === 'regles') {
-    const themes = [...new Set(RULES.map(([t]) => t))];
-    content = themes.map((t) => `<h3>${t}</h3>${RULES.filter(([x]) => x === t).map(([, title, meta, html]) => row(title, esc(meta),
+    // Deux sous-rubriques : combat (chapitre 4) et magie (chapitre 5)
+    const sub = ui.ruleSub || 'combat';
+    const themes = [...new Set(RULES.map(([t]) => t))].filter((t) => t.startsWith('Magie') === (sub === 'magie'));
+    content = `<div class="filters sub">${[['combat', '⚔️ Combat'], ['magie', '✨ Magie']].map(([k, l]) => `<button class="chip ${sub === k ? 'on' : ''}" data-act="ruleSub" data-s="${k}">${l}</button>`).join('')}</div>`
+      + themes.map((t) => `<h3>${t.replace(/^Magie : /, '')}</h3>${RULES.filter(([x]) => x === t).map(([, title, meta, html]) => row(title, esc(meta),
       `<div class="small rule">${html}</div>`, `${title} ${meta} ${t} ${html.replace(/<[^>]+>/g, ' ')}`)).join('')}`).join('');
   }
   return `<section class="card biblio">
@@ -931,7 +934,7 @@ function viewBiblio() {
     <input class="lib-search" id="libSearch" type="search" placeholder="Rechercher…" value="${esc(ui.libSearch || '')}">
     <div class="lib-list">${content}</div>
     <p class="empty lib-none" hidden>Rien ne correspond.</p>
-    <p class="small muted hint">${sec === 'regles' ? 'Rappels résumés du chapitre combat : le livre fait foi, et le MJ a le dernier mot.' : 'Noms traduits librement, effets résumés : le livre fait foi. Pour équiper ou apprendre, utilise le Sac ou la Magie.'}</p>
+    <p class="small muted hint">${sec === 'regles' ? 'Rappels résumés des chapitres combat et magie : le livre fait foi, et le MJ a le dernier mot.' : 'Noms traduits librement, effets résumés : le livre fait foi. Pour équiper ou apprendre, utilise le Sac ou la Magie.'}</p>
   </section>`;
 }
 // Filtre la liste sans tout redessiner (garde le clavier ouvert)
@@ -1838,6 +1841,7 @@ const A = {
     if (cost) useAbility(c, a, cost); else showAbility(+el.dataset.i);
   },
   libSection(el) { ui.libSection = el.dataset.s; render(); },
+  ruleSub(el) { ui.ruleSub = el.dataset.s; render(); if (ui.libSearch) filterLib(); },
 
   // ----- Combat -----
   pool(el) {

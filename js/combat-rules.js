@@ -1,5 +1,5 @@
-// Rappels de règles pour le combat (bibliothèque « Règles »).
-// Résumés écrits librement d'après le chapitre 4 du livre (et les jets du chapitre 3) : le livre fait foi.
+// Rappels de règles pour le combat et la magie (bibliothèque « Règles »).
+// Résumés écrits librement d'après les chapitres 4 et 5 du livre (et les jets du chapitre 3) : le livre fait foi.
 // [thème, titre, repère court, contenu HTML]
 export const RULES = [
   // ----- Le tour de combat -----
@@ -173,4 +173,86 @@ export const RULES = [
     <p>Éclairent 10 m autour. Allumer prend une action (briquet, feu ou tour de magie). Tenues dans une main. Une torche sert de gourdin qui brûle, mais peut s’éteindre à chaque coup porté.</p>`],
   ['Autres dangers', 'Combat à cheval', 'monture dressée', `
     <p>Il faut une monture dressée au combat. Tu utilises son Déplacement. Attaques et parades avec la plus basse de tes compétences entre Équitation et l’arme ; Équitation remplace l’Esquive. Sans selle : désavantage partout. L’ennemi choisit de viser toi ou ta monture ; au contact depuis le sol, il a un désavantage contre toi.</p>`],
+
+  // ===== Magie (chapitre 5) =====
+  ['Magie : les bases', 'Écoles de magie', 'compétences secondaires', `
+    <p>Animisme, Élémentalisme et Mentalisme sont des compétences à part (basées sur l’INT). Sans formation dans une école, tu n’as aucune chance de base, même mage. La <b>magie générale</b> n’est pas une école : n’importe quelle école permet de lancer ses sorts.</p>
+    <p>On connaît un sort ou non : pas de niveau par sort, seulement dans l’école. Le rang (1, 2, 3…) indique la difficulté, sans effet en jeu.</p>`],
+  ['Magie : les bases', 'Sorts préparés', 'max = chance de base INT', `
+    <p>Tu ne peux garder préparés en mémoire qu’autant de sorts que ta chance de base en INT. Pour en changer, il faut étudier ton grimoire pendant un quart (possible pendant un repos long), quel que soit le nombre de sorts.</p>
+    <p>Les <b>tours de magie</b> ne comptent pas : ils sont toujours prêts.</p>`],
+  ['Magie : les bases', 'Grimoire', '', `
+    <p>Il contient tous les sorts que tu connais ; y recopier un sort prend un quart. En urgence, on peut lancer un sort non préparé directement depuis le grimoire, mais cela prend deux fois plus de temps (un round, un intervalle ou un quart de plus). Pas de sort de réaction depuis le grimoire.</p>
+    <p>Grimoire perdu : impossible de préparer les sorts qu’il contenait avant d’en avoir un nouveau et de les y recopier.</p>`],
+  ['Magie : les bases', 'Magie et métal', 'interdit', `
+    <p>Pas de magie si tu portes une armure en métal ou si tu as une arme en métal à portée de main, même en partie (hache, lance, cuir clouté, flèches…). Bâtons, gourdins et frondes vont bien. Ce qui est rangé dans le sac ne compte pas.</p>`],
+
+  ['Magie : lancer un sort', 'Lancer un sort', 'PVol + jet d’école', `
+    <p>Dépense les PVol puis fais un jet dans l’école du sort. Réussi : le sort fait son effet. Raté : aucun effet, mais <b>les PVol sont perdus</b>. On peut forcer le jet.</p>
+    <p>Les <b>tours de magie</b> réussissent toujours, coûtent 1 PVol et demandent un geste.</p>`],
+  ['Magie : lancer un sort', 'Niveau de puissance', '2 PVol par niveau', `
+    <p>Tu choisis le niveau de puissance (1 à 3) : chaque niveau coûte 2 PVol, donc 2, 4 ou 6 PVol. Les sorts sans niveau de puissance coûtent toujours 2 PVol.</p>
+    <p>À 0 PVol, seul l’usage des sorts et capacités est impossible : rien d’autre.</p>`],
+  ['Magie : lancer un sort', 'Puiser dans son corps', 'à 0 ou 1 PVol', `
+    <p>Avec 1 PVol ou moins, tu peux choisir un dé (D4 à D20) et le lancer avant le sort : tu gagnes autant de PVol à utiliser tout de suite, et tu subis autant de dégâts après le sort. Les PVol non utilisés sont perdus. Interdit pour les sorts de soin.</p>`],
+  ['Magie : lancer un sort', 'Composantes', 'mot · geste · focus · ingrédient', `
+    <ul>
+      <li><b>Mot</b> : une incantation à voix haute (pas un murmure).</li>
+      <li><b>Geste</b> : des mouvements de mains précis.</li>
+      <li><b>Focus</b> : un objet tenu en main (baguette, boule de cristal, amulette…).</li>
+      <li><b>Ingrédient</b> : consommé par le sort.</li>
+    </ul>
+    <p>Il faut toutes les composantes du sort pour le lancer.</p>`],
+  ['Magie : lancer un sort', 'Temps d’incantation', 'action · réaction · rituel', `
+    <ul>
+      <li><b>Action</b> : le cas normal en combat.</li>
+      <li><b>Réaction</b> : hors de ton tour, et contrairement à parer ou esquiver, ça ne remplace pas ton action : autant que tes PVol le permettent.</li>
+      <li><b>Rituel</b> : un intervalle, voire un quart.</li>
+    </ul>`],
+  ['Magie : lancer un sort', 'Portée et zone', 'pas au-delà', `
+    <p>Un sort ne peut jamais viser plus loin que sa portée (pas de « double portée » comme pour les armes). <b>Personnelle</b> : seulement toi.</p>
+    <ul>
+      <li><b>Zone</b> : part de toi sauf indication. Elle s’esquive mais ne se pare pas. Épargner des cibles dans la zone donne un désavantage.</li>
+      <li><b>Sphère</b> : toutes les cibles dans la zone, sauf toi.</li>
+      <li><b>Cône</b> : aussi large, à chaque point, que la distance au lanceur ; la portée est sa longueur.</li>
+    </ul>`],
+  ['Magie : lancer un sort', 'Durée', '', `
+    <ul>
+      <li><b>Instantanée</b> : l’effet a lieu, puis plus rien.</li>
+      <li><b>Round</b> : jusqu’à ton tour au round suivant.</li>
+      <li><b>Intervalle</b> ou <b>quart</b> : jusqu’à la fin de cette durée.</li>
+      <li><b>Concentration</b> : s’arrête si tu fais une autre action, prends des dégâts ou rates un jet de peur. Un bruit soudain impose un jet de VOL (pas une action) pour la garder.</li>
+    </ul>`],
+
+  ['Magie : imprévus', 'Dragon en lançant un sort', '', `
+    <p>La cible doit faire un Dragon pour résister, parer ou esquiver. Choisis un effet :</p>
+    <ul><li>dégâts ou portée doublés ;</li><li>le sort ne coûte aucun PVol ;</li><li>tu lances aussitôt un autre sort, avec désavantage.</li></ul>`],
+  ['Magie : imprévus', 'Démon : incident magique', 'D20', `
+    <p>Un Démon : jet impossible à forcer, et on tire un incident sur D20 :</p>
+    <ul>
+      <li>1 Étourdi · 2 Épuisé · 3 Malade · 4 Furieux · 5 Effrayé · 6 Découragé</li>
+      <li>7 D6 dégâts par niveau de puissance · 8 −D6 PVol par niveau</li>
+      <li>9 maladie magique (virulence 3D6) pour toi et ceux que tu croises pendant un quart</li>
+      <li>10 un autre de tes sorts part à la place (même cible, même puissance)</li>
+      <li>11 tu craches une grenouille à chaque mensonge · 12 l’or et l’argent que tu touches tombent en poussière · 13 aveugle (comme dans le noir complet) · 14 amnésie — pour 11 à 14, D4 chaque matin : sur 1 c’est fini (Dissipation marche aussi, sauf l’amnésie)</li>
+      <li>15 le sort touche aussi un allié (un soin profite à un ennemi)</li>
+      <li>16 retour de flamme : un sort offensif te vise, un sort de protection ou de soin blesse</li>
+      <li>17 tu deviens un animal (D6 : chat, renard, chèvre, loup, cerf, ours), D4 chaque matin pour redevenir toi</li>
+      <li>18 tu rajeunis d’une catégorie d’âge · 19 tu vieillis d’une catégorie (définitif)</li>
+      <li>20 un démon arrive dans le quart qui suit</li>
+    </ul>`],
+  ['Magie : imprévus', 'Objets magiques', '', `
+    <p>Ils peuvent contenir des sorts utilisables même sans être mage. Pour les identifier et s’en servir : jet de Langues ou d’une école de magie. Lancer leurs sorts coûte quand même des PVol, sauf si l’objet en stocke.</p>`],
+
+  ['Magie : apprendre', 'Apprendre un sort', 'marque de progression', `
+    <p>Il faut un niveau dans l’école du sort (n’importe laquelle pour la magie générale) et ses prérequis.</p>
+    <ul>
+      <li><b>Avec un maître</b> : une leçon d’un quart. En fin de séance, tu utilises une marque de progression de l’école pour ce sort au lieu d’augmenter l’école, et tu fais un jet d’INT avec avantage. Réussi : sort appris.</li>
+      <li><b>Avec un grimoire</b> trouvé : pareil, mais jet de Langues sans avantage.</li>
+      <li><b>Tour de magie</b> : un intervalle avec un maître ou un grimoire, sans marque ni jet.</li>
+    </ul>`],
+  ['Magie : apprendre', 'Nouvelle école', 'Talent magique', `
+    <p>Prends d’abord la capacité héroïque <b>Talent magique</b>, puis étudie au moins une semaine avec un maître de l’école. Jet d’INT en fin de semaine : réussi, tu as la chance de base en INT dans l’école ; raté, retente après une autre semaine. Même un non-mage peut apprendre ainsi.</p>`],
+  ['Magie : apprendre', 'Mage débutant', '3 sorts + 3 tours', `
+    <p>Une école formée (INT), trois sorts de rang 1 et trois tours de magie, pris dans ton école ou la magie générale, et un grimoire qui les contient.</p>`],
 ];
