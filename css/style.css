@@ -610,3 +610,9 @@ nav.tabs button span { white-space: nowrap; }
 .login .btn.full { width: 100%; justify-content: center; }
 .login .or { margin: 10px 0 2px; }
 .login a { color: var(--red); }
+/* Dés teintés : vert-bleu pour l'avantage (on garde le plus petit), rouge pour le désavantage (le plus grand) */
+.dice.boon .die:not(.dragon):not(.demon) { background: radial-gradient(circle at 35% 30%, #eefaf7, #9fd1c6); color: #12493f; }
+.dice.bane .die:not(.dragon):not(.demon) { background: radial-gradient(circle at 35% 30%, #fff0ec, #e7a99f); color: #6e1a16; }
+.dice.idle.boon .die { color: #1f6b5c; }
+.dice.idle.bane .die { color: var(--red-dk); }
+.dice-count.bane { color: var(--red); font-weight: 600; }
