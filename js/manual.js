@@ -51,6 +51,8 @@ export const MANUAL = [
   ['Carnet', `
     <p>Identité, faiblesse, apparence, souvenir, compagnons et notes libres. L’identité se modifie en mode libre.</p>`],
   ['Groupe', `
+    <p><b>Groupe partagé</b> : touche « Partager ce groupe » pour obtenir un code, et donne-le aux autres joueurs. Chacun touche « Rejoindre avec un code » sur son téléphone (connecté avec son compte Google). Tout le monde voit et modifie la même caisse et le même matériel, en direct.</p>
+    <p>Le <b>journal</b> note chaque modification : quand, quoi, et qui (le nom du personnage). Sans réseau, tes modifications attendent (⏳) et partent dès le retour du réseau.</p>
     <ul>
       <li><b>Caisse</b> : Recette ou Dépense. Coche la case pour prendre l’argent dans ta bourse ou l’y verser. Chaque ligne du journal s’annule avec ↶.</li>
       <li><b>Montures et véhicules</b> : chaque âne et le char ont leur chargement. Ajoute des sacoches de selle (+2), attelle un âne au char avec le harnais.</li>

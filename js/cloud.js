@@ -90,3 +90,68 @@ export async function push(characters, deleted, since, group = null) {
   if (n) await batch.commit();
   return n;
 }
+
+// ----- Groupe partagé : groups/{code} (même collection et mêmes règles que le Grimoire WFRP) -----
+// Un document par groupe : membres + état (caisse, montures, journal) en JSON.
+// Toute modification passe par une transaction : deux joueurs peuvent écrire en même temps sans rien perdre.
+// L'état porte « game: 'dragonbane' » pour ne pas confondre avec un groupe Warhammer.
+const groupDoc = (id) => fb.doc(db, 'groups', id);
+const who = () => { const u = user(); if (!u) throw Object.assign(new Error('Non connecté'), { auth: true }); return u; };
+
+export async function createGroup(id, name, state) {
+  const u = who();
+  await fb.setDoc(groupDoc(id), {
+    name, members: [u.uid], memberNames: { [u.uid]: u.displayName || u.email || 'Joueur' },
+    json: JSON.stringify(state), updatedAt: Date.now(), createdAt: Date.now(),
+  });
+}
+
+// Rejoindre : on s'ajoute à la liste des membres (refusé si c'est un groupe d'un autre jeu)
+export async function joinGroup(id, game) {
+  const u = who();
+  return fb.runTransaction(db, async (tx) => {
+    const snap = await tx.get(groupDoc(id));
+    if (!snap.exists()) throw new Error('Code de groupe inconnu');
+    const d = snap.data();
+    let g = '';
+    try { g = JSON.parse(d.json || '{}').game || ''; } catch { /* état illisible */ }
+    if (g !== game) throw new Error('Ce code n’est pas un groupe Dragonbane');
+    if (!d.members.includes(u.uid)) {
+      tx.update(groupDoc(id), { members: [...d.members, u.uid], memberNames: { ...d.memberNames, [u.uid]: u.displayName || u.email || 'Joueur' } });
+    }
+    return d.name;
+  });
+}
+
+// fn(state) modifie l'état (journal compris) et renvoie la ligne ajoutée, ou null s'il n'y a rien à écrire
+export async function updateGroup(id, fn) {
+  who();
+  return fb.runTransaction(db, async (tx) => {
+    const snap = await tx.get(groupDoc(id));
+    if (!snap.exists()) throw new Error('Groupe introuvable');
+    const state = JSON.parse(snap.data().json || '{}');
+    if (!fn(state)) return false;
+    tx.update(groupDoc(id), { json: JSON.stringify(state), updatedAt: Date.now() });
+    return true;
+  });
+}
+
+// Suit le groupe en direct ; renvoie la fonction pour arrêter
+export function watchGroup(id, onData, onError) {
+  return fb.onSnapshot(groupDoc(id), (snap) => {
+    if (!snap.exists()) { onError?.(new Error('Groupe introuvable')); return; }
+    const d = snap.data();
+    onData({ id, name: d.name, members: d.memberNames || {}, state: JSON.parse(d.json || '{}'), updatedAt: d.updatedAt || 0 });
+  }, (e) => onError?.(e));
+}
+
+export async function leaveGroup(id) {
+  const u = who();
+  await fb.runTransaction(db, async (tx) => {
+    const snap = await tx.get(groupDoc(id));
+    if (!snap.exists()) return;
+    const d = snap.data();
+    const names = { ...d.memberNames }; delete names[u.uid];
+    tx.update(groupDoc(id), { members: d.members.filter((m) => m !== u.uid), memberNames: names });
+  });
+}

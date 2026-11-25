@@ -364,7 +364,7 @@ export function upgradeGroup(g) {
   g.money ??= { or: 0, argent: 0, cuivre: 0 };
   g.log ??= [];
   g.carriers ??= [];
-  g.carriers.forEach((k) => { k.items ??= []; k.pulledBy ??= []; k.saddlebags ??= 0; });
+  g.carriers.forEach((k) => { k.id ||= uid(); k.items ??= []; k.pulledBy ??= []; k.saddlebags ??= 0; k.items.forEach((it) => { it.id ||= uid(); }); });
   return g;
 }
 // Capacité réelle : base + 2 par sacoche de selle (2 au plus, animaux seulement)
