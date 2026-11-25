@@ -126,7 +126,7 @@ const who = () => { const u = user(); if (!u) throw Object.assign(new Error('Non
 export async function createGroup(id, name, state) {
   const u = who();
   await fb.setDoc(groupDoc(id), {
-    name, members: [u.uid], memberNames: { [u.uid]: u.displayName || u.email || 'Joueur' },
+    name, owner: u.uid, members: [u.uid], memberNames: { [u.uid]: u.displayName || u.email || 'Joueur' },
     json: JSON.stringify(state), updatedAt: Date.now(), createdAt: Date.now(),
   });
 }
@@ -166,7 +166,7 @@ export function watchGroup(id, onData, onError) {
   return fb.onSnapshot(groupDoc(id), (snap) => {
     if (!snap.exists()) { onError?.(new Error('Groupe introuvable')); return; }
     const d = snap.data();
-    onData({ id, name: d.name, members: d.memberNames || {}, mj: d.mj || '', mjName: d.mjName || '', state: JSON.parse(d.json || '{}'), updatedAt: d.updatedAt || 0 });
+    onData({ id, name: d.name, members: d.memberNames || {}, owner: d.owner || d.members?.[0] || '', mj: d.mj || '', mjName: d.mjName || '', state: JSON.parse(d.json || '{}'), updatedAt: d.updatedAt || 0 });
   }, (e) => onError?.(e));
 }
 
@@ -215,6 +215,24 @@ export async function deletePerso(g, id) { who(); await fb.deleteDoc(persoDoc(g,
 
 // ----- Meneur de jeu : un compte désigné dans le groupe (champs « mj » et « mjName » du document du groupe) -----
 export const uid = () => user()?.uid || '';
+// Code MJ : un petit document à part dans « groups » (son identifiant EST le code), créé par l'administrateur.
+// Il indique le groupe à rejoindre ; on ne peut pas lister ces documents, seulement les lire si on connaît le code.
+// Son JSON porte game: 'dragonbane-mj' pour qu'on ne puisse pas le « rejoindre » comme un groupe ordinaire.
+export async function createMJInvite(code, g) {
+  const u = who();
+  await fb.setDoc(groupDoc(code), { kind: 'mjinvite', group: g, members: [u.uid], memberNames: { [u.uid]: u.displayName || u.email || 'Admin' },
+    json: JSON.stringify({ game: 'dragonbane-mj' }), revoked: false, createdAt: Date.now() });
+}
+export async function revokeMJInvite(code) { who(); await fb.updateDoc(groupDoc(code), { revoked: true }); }
+export async function redeemMJInvite(code) {
+  who();
+  const snap = await fb.getDoc(groupDoc(code));
+  if (!snap.exists()) throw new Error('Code MJ inconnu');
+  const d = snap.data();
+  if (d.kind !== 'mjinvite') throw new Error('Ce n’est pas un code MJ (c’est peut-être le code du groupe pour les joueurs)');
+  if (d.revoked) throw new Error('Ce code MJ n’est plus valable : demandes-en un nouveau à l’administrateur du groupe');
+  return d.group;
+}
 export async function setGroupMJ(g, mjUid, mjName) {
   who();
   await fb.updateDoc(groupDoc(g), { mj: mjUid || '', mjName: mjName || '' });

@@ -329,6 +329,18 @@ export const group = {
     cur = { id, name, members: {}, state: EMPTY(), updatedAt: 0 }; queue = []; save(); this.refresh(); emit();
     return name;
   },
+  // Entrer dans un groupe comme meneur de jeu, avec le code MJ donné par l'administrateur
+  async joinAsMJ(code) {
+    const c = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!c) throw new Error('Saisis le code MJ');
+    const id = await cloud.redeemMJInvite(c);
+    const name = await cloud.joinGroup(id, GAME);
+    const u = cloud.user();
+    const mjName = u.displayName || u.email || 'MJ';
+    await cloud.setGroupMJ(id, u.uid, mjName);
+    cur = { id, name, members: {}, mj: u.uid, mjName, state: EMPTY(), updatedAt: 0 }; queue = []; save(); this.refresh(); emit();
+    return name;
+  },
   async leave() {
     const id = cur?.id;
     stop?.(); stop = null; watching = null;

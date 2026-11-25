@@ -84,7 +84,7 @@ Les noms français (compétences, états, capacités) sont des traductions libre
 
 ## Meneur de jeu
 
-Dans un groupe partagé, un membre connecté touche **« 👑 Je suis le MJ »** (onglet Groupe) : son compte devient le MJ du groupe (champ `mj` du document `groups/{code}`) ; lui seul peut ensuite céder sa place. Chaque joueur envoie alors automatiquement ses fiches **complètes** (notes secrètes, journal perso, PNJ, lieux et leurs images) dans `groups/{code}/mj/{son uid}/…`, et le MJ dispose d'un onglet **MJ** : tableau en direct de tous les personnages, notes privées, et fiche complète en lecture seule. Les joueurs sont prévenus dans la carte du groupe.
+Dans un groupe partagé, l'**administrateur** (le créateur du groupe, champ `owner`) obtient un **code MJ** (onglet Groupe › « Code MJ ») : un petit document `groups/{code MJ}` (`kind: 'mjinvite'`) qui pointe vers le groupe. Le meneur de jeu, connecté, touche « 👑 Je suis le meneur de jeu » sur la première page et saisit ce code : il rejoint le groupe et son compte devient le MJ (champ `mj`), sans avoir besoin de personnage (onglets MJ, Journal, Groupe, Biblio). « Nouveau code » révoque l'ancien ; l'administrateur peut aussi se désigner MJ lui-même. Aucune règle Firestore supplémentaire n'est nécessaire. Chaque joueur envoie alors automatiquement ses fiches **complètes** (notes secrètes, journal perso, PNJ, lieux et leurs images) dans `groups/{code}/mj/{son uid}/…`, et le MJ dispose d'un onglet **MJ** : tableau en direct de tous les personnages, notes privées, et fiche complète en lecture seule. Les joueurs sont prévenus dans la carte du groupe.
 
 Règle Firestore à ajouter (à côté de la règle « media ») pour que **seuls le joueur et le MJ** puissent lire ces fiches :
 

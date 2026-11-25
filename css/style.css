@@ -815,3 +815,6 @@ body.no-scroll { overflow: hidden; }
 .mj-state { width: 100%; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 0; }
 .mj-state .btn { margin-left: auto; }
 .mj-lent { color: #5b4a78; margin: 6px 0 0; }
+.mj-entry { margin-top: 8px; }
+.mj-admin { width: 100%; display: flex; align-items: center; gap: 8px; margin: 4px 0 0; }
+.mj-admin .btn { margin-left: auto; }

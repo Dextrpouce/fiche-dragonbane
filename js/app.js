@@ -15,7 +15,10 @@ const $app = document.getElementById('app');
 const dlg = document.getElementById('dlg');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 // Personnage affiché : le tien, ou celui d'un joueur absent que tu joues (ui.guest, voir « Personnages prêtés »)
-const C = () => ui.mjView || ui.guest || store.current();
+let mjStubObj = null;
+// MJ sans personnage à lui : une fiche vide en mémoire (jamais enregistrée), pour que l'appli fonctionne
+const mjStub = () => (mjStubObj ||= Object.assign(R.newCharacter({ name: 'Meneur de jeu' }), { id: '__mj', stub: true }));
+const C = () => ui.mjView || ui.guest || store.current() || (isMJ() ? mjStub() : null);
 const num = (v) => (v === '' || v == null || isNaN(+v) ? 0 : +v);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const fmtDate = (t) => new Date(t).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' });
@@ -71,7 +74,7 @@ function toast(msg) {
 
 function commit(rerender = true) {
   C().updatedAt = Date.now();
-  if (ui.mjView) return void (rerender && render()); // fiche d'un joueur vue par le MJ : lecture seule
+  if (ui.mjView || C().stub) return void (rerender && render()); // fiche vue par le MJ ou MJ sans personnage : rien à enregistrer
   if (ui.guest) pushGuest(); else { store.save(); pushLent(C()); pushMJ(C()); }
   if (rerender) render();
 }
@@ -243,6 +246,7 @@ function renderWelcome() {
       <h2>Bienvenue, aventurier</h2>
       <p>Commence par créer ton personnage : peuple, profession, âge, attributs et compétences entraînées.</p>
       <button class="btn block" data-act="newCharacter">${icon('plus')} Créer un personnage</button>
+      <button class="btn ghost block mj-entry" data-act="mjJoin">👑 Je suis le meneur de jeu</button>
       <p class="small muted" style="margin:14px 0 0">Tu as déjà un personnage sur un autre appareil ? Touche le <b>nuage</b> pour te connecter : il reviendra tout seul. Tu as un fichier ? Menu <b>⋮</b> › Importer.</p>
     </section></main>
   </div>`;
@@ -255,6 +259,7 @@ function render() {
   if (ui.tab === 'magie' && !R.isCaster(c)) ui.tab = 'fiche';
   if ((ui.guest || ui.mjView) && ui.mode !== 'normal') ui.mode = 'normal'; // personnage prêté ou vu par le MJ : ni mode libre ni progression
   if (ui.tab === 'mj' && !isMJ()) ui.tab = 'fiche';
+  if (c.stub && !['mj', 'journal', 'groupe', 'biblio'].includes(ui.tab)) ui.tab = 'mj';
   watchLent(); mjSync(); mjWatch();
   const y = window.scrollY;
   const marked = c.skills.filter((s) => s.mark).length;
@@ -266,7 +271,7 @@ function render() {
     ${isProg() ? `<div class="banner prog-banner">${icon('star')}<span><b>Progression</b> — ${marked} compétence${marked > 1 ? 's' : ''} cochée${marked > 1 ? 's' : ''}${c.pendingMarks ? `, <b>${c.pendingMarks}</b> coche${c.pendingMarks > 1 ? 's' : ''} de fin de séance à placer` : ''}. Touche une compétence pour la cocher.</span>
       <button class="btn small gold" data-act="advanceRolls" ${marked ? '' : 'disabled'}>${icon('d20')} Jets d’amélioration</button></div>` : ''}
     <main>${VIEWS[ui.tab](c)}</main>
-    <nav class="tabs">${[...TABS, ...(isMJ() && !ui.mjView ? [['mj', 'MJ', 'crown']] : [])].filter(([k]) => k !== 'magie' || R.isCaster(c)).map(([k, l, i]) => `<button class="${ui.tab === k ? 'active' : ''}" data-act="tab" data-tab="${k}">${icon(i)}<span>${l}</span></button>`).join('')}</nav>
+    <nav class="tabs">${[...(c.stub ? [] : TABS), ...(isMJ() && !ui.mjView ? [['mj', 'MJ', 'crown']] : []), ...(c.stub ? TABS.filter(([k]) => ['journal', 'groupe', 'biblio'].includes(k)) : [])].filter(([k]) => k !== 'magie' || R.isCaster(c)).map(([k, l, i]) => `<button class="${ui.tab === k ? 'active' : ''}" data-act="tab" data-tab="${k}">${icon(i)}<span>${l}</span></button>`).join('')}</nav>
   </div>`;
   window.scrollTo(0, y);
   if (ui.tab === 'biblio' && ui.libSearch) filterLib();
@@ -274,6 +279,14 @@ function render() {
 }
 
 function topbar(c) {
+  if (c.stub) {
+    return `<header class="topbar">
+    <button class="who" data-act="characters" aria-label="Mes personnages"><span class="crest">👑</span><span class="who-txt"><div class="who-name">Meneur de jeu</div><div class="who-sub">${esc(group.shared?.name || '')}</div></span></button>
+    <button class="icon-btn" data-act="manual" aria-label="Manuel d’utilisation">${icon('help')}</button>
+    ${syncButton()}
+    <button class="icon-btn" data-act="menu" aria-label="Menu">${icon('dots')}</button>
+  </header>`;
+  }
   const sub = [R.kinName(c), R.profName(c), R.AGE[c.age]?.name].filter(Boolean).join(' · ');
   return `<header class="topbar">
     <button class="who" data-act="characters" aria-label="Changer de personnage">
@@ -552,7 +565,7 @@ function combatAbilities(c) {
 // Les données passent par group.js : chaque modification est une opération notée au journal (qui, quoi),
 // partagée en direct si le groupe est partagé.
 const G = () => group.state;
-const author = () => (ui.guest ? `${ui.guest.name} (joué par ${store.current()?.name || 'un joueur'})` : C()?.name || store.userEmail || 'Joueur');
+const author = () => (C()?.stub ? `MJ (${group.shared?.mjName || 'MJ'})` : ui.guest ? `${ui.guest.name} (joué par ${store.current()?.name || 'un joueur'})` : C()?.name || store.userEmail || 'Joueur');
 // Applique une opération du groupe ; false (et message) si elle est impossible
 function gApply(op, okMsg = '') {
   try {
@@ -620,12 +633,13 @@ function shareCard() {
     ${members.length ? `<p class="small muted">Membres : ${members.map(esc).join(', ')}</p>` : ''}
     ${status}
     <div class="mj-share">
-      ${!sh.mj ? `<span class="small">Pas encore de meneur de jeu.</span><button class="btn small ghost" data-act="mjClaim">👑 Je suis le MJ</button>`
+      ${!sh.mj ? `<span class="small">Pas encore de meneur de jeu.${isAdmin() ? '' : ' L’administrateur du groupe peut créer un code MJ.'}</span>${isAdmin() ? '<button class="btn small ghost" data-act="mjClaim">👑 Je serai le MJ</button>' : ''}`
         : isMJ() ? `<span class="small">👑 <b>Tu es le MJ</b> : tu vois toutes les fiches (onglet MJ).</span><button class="btn small ghost" data-act="mjLeave">Ne plus être MJ</button>`
         : `<span class="small">👑 MJ : <b>${esc(sh.mjName || '?')}</b>. Il voit vos fiches complètes, notes secrètes et journal perso compris.</span>
           <p class="small mj-state ${mjError || !cloud.user() ? 'bad' : 'good'}">${!cloud.user() ? 'Connecte-toi (le nuage en haut) pour que le MJ reçoive ta fiche.'
             : mjError ? esc(mjError) : mjOkAt ? `✓ Tes fiches sont à jour chez le MJ (${new Date(mjOkAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })})` : 'Envoi de tes fiches au MJ…'}
             ${cloud.user() ? '<button class="btn small ghost" data-act="mjResend">Renvoyer mes fiches au MJ</button>' : ''}</p>`}
+      ${isAdmin() ? `<p class="small mj-admin">🔑 Tu es l’administrateur du groupe.<button class="btn small ghost" data-act="mjCode">Code MJ</button></p>` : ''}
     </div>
   </section>`;
 }
@@ -694,13 +708,13 @@ function groupMoneyDialog(sign) {
     title: sign > 0 ? 'Recette' : 'Dépense',
     body: `<div class="fields three">${F.num('or', 'Or', '', '', 'autofocus')}${F.num('argent', 'Argent', '')}${F.num('cuivre', 'Cuivre', '')}</div>
       <div class="fields">${F.text('label', 'Motif', '', 'full', `placeholder="${sign > 0 ? 'Butin, vente, récompense…' : 'Auberge, fourrage, réparation…'}"`)}</div>
-      ${F.check('transfer', sign > 0 ? `Pris dans la bourse de ${esc(c.name)} (${fmtMoney(totalCopper(c.money))})` : `Donné à ${esc(c.name)} (va dans sa bourse)`, false)}
+      ${c.stub ? '' : F.check('transfer', sign > 0 ? `Pris dans la bourse de ${esc(c.name)} (${fmtMoney(totalCopper(c.money))})` : `Donné à ${esc(c.name)} (va dans sa bourse)`, false)}
       ${sign < 0 ? `<p class="small muted">La caisse contient ${fmtMoney(totalCopper(g.money))}. La monnaie est rendue automatiquement si besoin.</p>` : ''}`,
     actions: [cancel, { label: sign > 0 ? 'Ajouter à la caisse' : 'Retirer de la caisse', primary: true, onClick: (f) => {
       const coins = { or: num(f.or.value), argent: num(f.argent.value), cuivre: num(f.cuivre.value) };
       const amount = totalCopper(coins);
       if (!amount) { toast('Indique un montant'); return false; }
-      const tr = f.transfer.checked;
+      const tr = !!f.transfer?.checked;
       if (tr && sign > 0 && totalCopper(c.money) < amount) { toast(`${c.name} n’a pas assez (il manque ${fmtMoney(amount - totalCopper(c.money))})`); return false; }
       const motif = f.label.value.trim();
       const label = tr ? (sign > 0 ? `${c.name} verse dans la caisse` : `Donné à ${c.name}`) + (motif ? ` : ${motif}` : '') : (motif || (sign > 0 ? 'Recette' : 'Dépense'));
@@ -924,7 +938,7 @@ function groupSellDialog(k, it) {
 
 function groupItemDialog(k, it) {
   const c = C(); const g = G();
-  const dests = [['', '— Ne pas déplacer —'], ...g.carriers.filter((x) => x.id !== k.id).map((x) => [`k:${x.id}`, `${carrierEmoji(x)} ${x.name}`]), [`c:${c.id}`, `🎒 Sac de ${c.name}`]];
+  const dests = [['', '— Ne pas déplacer —'], ...g.carriers.filter((x) => x.id !== k.id).map((x) => [`k:${x.id}`, `${carrierEmoji(x)} ${x.name}`]), ...(c.stub ? [] : [[`c:${c.id}`, `🎒 Sac de ${c.name}`]])];
   openDialog({
     title: it.name,
     body: `<div class="fields">
@@ -1323,6 +1337,8 @@ function viewCarnet(c) {
 // Chaque joueur envoie automatiquement ses fiches COMPLÈTES (notes secrètes, journal perso, PNJ, lieux, croquis)
 // dans groups/{code}/mj/{son uid}/… ; la règle Firestore réserve leur lecture au joueur lui-même et au MJ.
 const isMJ = () => !!(group.shared?.mj && cloud.uid() === group.shared.mj);
+// Administrateur du groupe : son créateur (premier membre pour les groupes créés avant cette version)
+const isAdmin = () => !!(group.shared && cloud.uid() && cloud.uid() === group.shared.owner);
 const mjSent = new Map();    // id → updatedAt déjà envoyé au MJ
 let mjTimer = null; let mjError = ''; let mjFullKey = '';
 const mjErrText = (e) => (e?.code === 'permission-denied' ? 'Envoi au MJ refusé par Firebase : ajoute la règle « mj » (voir le manuel)' : e?.message || 'Erreur');
@@ -1959,7 +1975,7 @@ function viewJournal(c) {
             ${cur.places ? `<label class="small muted">Notes</label>${jField(sid, 'places', cur.places, 'rows="2"', true)}` : ''}
           </div>
           <div class="field"><label>Butin et récompenses ${jEd(cur, 'loot')}</label>${jField(sid, 'loot', cur.loot, 'rows="3" placeholder="Pièces, objets trouvés, promesses…"', true)}</div>
-          ${sh ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label>${bind(`secret.s.${sid}`, c.secret.s[sid] || '', 'area', 'rows="3" placeholder="Ce que tu gardes pour toi : soupçons, plans, secrets de ton personnage…"')}</div>` : ''}
+          ${sh && !c.stub ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label>${bind(`secret.s.${sid}`, c.secret.s[sid] || '', 'area', 'rows="3" placeholder="Ce que tu gardes pour toi : soupçons, plans, secrets de ton personnage…"')}</div>` : ''}
         </div>
         <h3>Pistes et choses à faire</h3>
         ${(cur.todos || []).map((t) => `<div class="j-todo-row ${t.done ? 'done' : ''}">
@@ -2651,9 +2667,52 @@ const A = {
   },
   mjResend() { mjSent.clear(); toast('Envoi de tes fiches au MJ…'); mjSync(true); },
   // Devenir MJ du groupe (ou céder la place)
+  // Première page (ou menu) : entrer dans un groupe comme MJ, sans personnage, avec le code MJ
+  mjJoin() {
+    if (!cloud.user()) { toast('Connecte-toi d’abord : le MJ est reconnu par son compte'); store.sync({ interactive: true }); return; }
+    openDialog({
+      title: 'Je suis le meneur de jeu',
+      body: `<p class="small">Saisis le <b>code MJ</b> que l’administrateur du groupe t’a donné (il l’obtient dans l’onglet Groupe, bouton « Code MJ »). Pas besoin de créer un personnage.</p>
+        <div class="fields">${F.text('code', 'Code MJ', '', 'full', 'autofocus autocapitalize="characters" placeholder="Ex. MJ7K2QPX"')}</div>`,
+      actions: [cancel, { label: 'Entrer comme MJ', primary: true, onClick: (f) => {
+        (async () => {
+          try { const name = await group.joinAsMJ(f.code.value); dlg.close(); ui.tab = 'mj'; render(); toast(`Tu es le MJ du groupe « ${name} »`); } catch (e) { toast(e.message || 'Code refusé'); }
+        })();
+        return false;
+      } }],
+    });
+  },
+  // Administrateur : obtenir (ou renouveler) le code MJ à donner au meneur de jeu
+  mjCode() {
+    const sh = group.shared; if (!sh || !isAdmin()) return;
+    const KEY = `dragonbane.mjInvite.${sh.id}`;
+    const show = (code) => openDialog({
+      title: 'Code MJ',
+      body: `<p class="small">Donne ce code au <b>meneur de jeu</b> : sur la première page de l’appli (ou dans le menu ⋮), il touche « Je suis le meneur de jeu » et le saisit. Il entre dans le groupe comme MJ et voit toutes les fiches, notes privées comprises. Ne le donne pas aux joueurs.</p>
+        <div class="share-code">${esc(code)}</div>
+        <p class="small muted">« Nouveau code » rend l’ancien inutilisable.</p>`,
+      actions: [
+        { label: 'Nouveau code', cls: 'ghost', onClick: () => { make(code); return false; } }, 'spacer',
+        { label: 'Copier', cls: 'ghost', onClick: () => { navigator.clipboard?.writeText(code).then(() => toast('Code copié')); return false; } },
+        ...(navigator.share ? [{ label: 'Envoyer', cls: 'ghost', onClick: () => { navigator.share({ text: `Code MJ du groupe « ${sh.name} » (Fiche Dragonbane) : ${code}` }).catch(() => {}); return false; } }] : []),
+        closeBtn,
+      ],
+    });
+    const make = async (old) => {
+      const code = `MJ${Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('')}`;
+      try {
+        await cloud.createMJInvite(code, sh.id);
+        if (old) cloud.revokeMJInvite(old).catch(() => {});
+        localStorage.setItem(KEY, code); show(code);
+      } catch (e) { toast(e.message || 'Création du code impossible'); }
+    };
+    const saved = localStorage.getItem(KEY);
+    if (saved) show(saved); else make(null);
+  },
   async mjClaim() {
     const sh = group.shared; if (!sh) return;
     if (!cloud.user()) { toast('Connecte-toi d’abord (le nuage en haut)'); return; }
+    if (!isAdmin()) { toast('Seul l’administrateur du groupe peut se désigner MJ ; les autres utilisent un code MJ'); return; }
     if (sh.mj && sh.mj !== cloud.uid()) { toast(`${sh.mjName || 'Quelqu’un'} est déjà le MJ : seul lui peut céder sa place`); return; }
     confirmDialog('Devenir MJ', `Tu seras le meneur de jeu du groupe « ${esc(sh.name)} » : tu verras toutes les fiches des joueurs, <b>notes secrètes et journaux perso compris</b>. Les joueurs en sont prévenus.`, 'Je suis le MJ', async () => {
       try { await cloud.setGroupMJ(sh.id, cloud.uid(), ownerName()); toast('Tu es le MJ du groupe'); } catch (e) { toast(e.message); }
@@ -2714,6 +2773,7 @@ const A = {
         <button type="button" data-m="importFile">${icon('upload')} Importer un fichier</button>
         <button type="button" data-m="cloudMenu">${icon('cloud')} Sauvegarde en ligne</button>
         <button type="button" data-m="history">${icon('history')} Historique des modifications</button>
+        ${isMJ() ? '' : `<button type="button" data-m="mjJoin">👑 Je suis le meneur de jeu (code MJ)</button>`}
         ${group.shared && C()?.journal?.length ? `<button type="button" data-m="jImport">${icon('upload')} Verser mon journal perso dans le groupe</button>` : ''}
         <button type="button" data-m="manual">${icon('book')} Manuel d’utilisation</button>
         <button type="button" data-m="soundToggle">${icon('d20')} Son des dés : ${snd.soundOn() ? 'activé' : 'coupé'}</button>
