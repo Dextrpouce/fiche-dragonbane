@@ -260,7 +260,7 @@ function topbar(c) {
   const sub = [R.kinName(c), R.profName(c), R.AGE[c.age]?.name].filter(Boolean).join(' · ');
   return `<header class="topbar">
     <button class="who" data-act="characters" aria-label="Changer de personnage">
-      <span class="crest">${esc((c.name || '?').trim().charAt(0).toUpperCase())}</span>
+      ${c.portrait ? `<span class="crest photo" style="background-image:url('${c.portrait}')"></span>` : `<span class="crest">${esc((c.name || '?').trim().charAt(0).toUpperCase())}</span>`}
       <span class="who-txt"><div class="who-name">${esc(c.name || 'Sans nom')}</div><div class="who-sub">${esc(sub || 'Touche pour gérer tes personnages')}</div></span>
     </button>
     <button class="mode-toggle mode-${ui.mode}" data-act="modeMenu" aria-label="Mode : ${MODES[ui.mode].label}">${icon(MODES[ui.mode].icon)}<span>${MODES[ui.mode].label}</span></button>
@@ -279,6 +279,50 @@ function vitals(c) {
     <div class="vital wp" data-act="tab" data-tab="combat"><span class="vk">PVol</span><span class="vv">${c.wp.cur}<small>/${wpMax}</small></span><span class="vbar"><i style="width:${wpMax ? clamp(c.wp.cur / wpMax * 100, 0, 100) : 0}%"></i></span></div>
     <div class="vital conds" data-act="tab" data-tab="combat">${c.music ? '<span class="cond-pill music">♪ Barde</span>' : ''}${conds.length ? conds.map((a) => `<span class="cond-pill">${a.cond}</span>`).join('') : c.music ? '' : '<span class="vk">Aucun état</span>'}</div>
   </div>`;
+}
+
+// ----- Portrait du personnage -----
+// L'image est réduite (600 × 800 au plus) et enregistrée en JPEG dans la fiche (c.portrait) :
+// elle suit la sauvegarde, l'export et la synchro. On vise moins de ~200 Ko.
+function readPortrait(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const k = Math.min(1, 600 / img.width, 800 / img.height);
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      const g = cv.getContext('2d');
+      g.fillStyle = '#f3e6c8'; g.fillRect(0, 0, cv.width, cv.height); // fond pour les images transparentes
+      g.drawImage(img, 0, 0, cv.width, cv.height);
+      let q = 0.85; let data = cv.toDataURL('image/jpeg', q);
+      while (data.length > 270000 && q > 0.45) { q -= 0.1; data = cv.toDataURL('image/jpeg', q); }
+      resolve(data);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image illisible')); };
+    img.src = url;
+  });
+}
+function pickPortrait() {
+  const c = C(); if (!c) return;
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return;
+    try { c.portrait = await readPortrait(f); commit(); toast('Portrait ajouté'); } catch (e) { toast(e.message || 'Image illisible'); }
+  };
+  inp.click();
+}
+function portraitCard(c) {
+  if (!c.portrait) {
+    return `<section class="card portrait-card empty-portrait">
+      <button class="btn ghost small" data-act="portraitPick">${icon('plus')} Ajouter un portrait</button>
+    </section>`;
+  }
+  return `<section class="card portrait-card">
+    <button class="portrait" data-act="portraitView" aria-label="Voir le portrait"><img src="${c.portrait}" alt="Portrait de ${esc(c.name || 'ton personnage')}"></button>
+  </section>`;
 }
 
 // ---------- Fiche ----------
@@ -326,6 +370,7 @@ function viewFiche(c) {
       </div>
       <p class="small muted hint">${isFree() ? 'Touche un attribut pour modifier sa valeur.' : 'Touche un attribut pour lancer le D20 (réussite si ≤ valeur), ou l’étiquette du bas pour mettre ou retirer son état.'}</p>
     </section>
+    ${portraitCard(c)}
     <section class="card skills-card">
       <h2>Compétences</h2>
       <div class="filters">
@@ -1895,6 +1940,20 @@ const A = {
   },
   exportAll() { download(`dragonbane-${new Date().toISOString().slice(0, 10)}.json`, store.exportAll()); },
   exportOne() { const c = C(); download(`${R.norm(c.name).replace(/[^a-z0-9]+/g, '-') || 'personnage'}.json`, store.exportOne(c)); },
+  portraitPick() { pickPortrait(); },
+  portraitView() {
+    const c = C(); if (!c?.portrait) return;
+    openDialog({
+      title: c.name || 'Portrait',
+      cls: 'portrait-dlg',
+      body: `<img class="portrait-full" src="${c.portrait}" alt="Portrait de ${esc(c.name || 'ton personnage')}">`,
+      actions: [
+        { label: icon('trash'), cls: 'ghost', onClick: () => { setTimeout(() => confirmDialog('Retirer le portrait', 'Retirer l’image de ce personnage ?', 'Retirer', () => { delete c.portrait; commit(); })); } },
+        'spacer', closeBtn,
+        { label: 'Changer l’image', primary: true, onClick: () => { pickPortrait(); } },
+      ],
+    });
+  },
   importFile() {
     const inp = document.createElement('input');
     inp.type = 'file'; inp.accept = '.json,application/json';
