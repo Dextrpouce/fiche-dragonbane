@@ -28,6 +28,7 @@ export const MANUAL = [
     <p>Tout ce qu’il faut pendant un combat, sans rien modifier par erreur :</p>
     <ul>
       <li><b>États</b> : touche un état pour le prendre ou l’enlever. L’interrupteur <b>Musique du barde</b> donne un avantage à tous tes jets tant qu’il est allumé.</li>
+      <li><b>Tes propres dés</b> 🎲 : coche « Je lance mes dés » dans une fenêtre de jet (ou menu ⋮ › Dés). Partout, l’appli te demande alors le résultat au lieu de tirer : Réussite, Échec, Dragon ou Démon pour un D20 (coche, jet forcé et incidents compris), le D6 d’un repos, les PV et PVol d’un repos court, les compétences améliorées en fin de séance ; pour les dégâts, elle te dit quels dés lancer. Les jets de mort se notent avec les boutons à côté des cases. Ce choix est retenu.</li>
       <li><b>PV et PVol</b> : boutons − et + pour suivre les dégâts et les dépenses. À 0 PV, les <b>jets de mort</b> apparaissent : lance-les avec l’appli, ou avec tes dés et indique le résultat (Réussite, Échec, Dragon, Démon ; à la troisième réussite, choisis les PV du D6).</li>
       <li><b>Armes</b> : Attaquer, Parer, Dégâts, ou <b>🗡 Sournoise</b> pour une attaque par surprise (jet de Discrétion d’abord). Esquiver est en dessous.</li>
       <li><b>Capacités</b> : tes capacités utiles en combat, avec un bouton qui dépense les PVol.</li>

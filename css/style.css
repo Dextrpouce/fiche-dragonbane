@@ -858,3 +858,7 @@ body.no-scroll { overflow: hidden; }
 .heal-wrap { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
 .heal-msg { font-weight: 600; }
 .heal-wrap .dmg-total { color: var(--green); }
+.real-toggle { justify-content: center; margin: 2px auto 6px; font-size: .9rem; }
+.real-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 8px 0; }
+.die-pick { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 10px 0; }
+.die-pick .btn { min-width: 48px; justify-content: center; }

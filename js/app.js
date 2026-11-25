@@ -2356,9 +2356,25 @@ function spin(els, max, ms, done) {
   tick();
 }
 const DICE_MS = 1100;
+// « Je lance mes propres dés » : partout, on indique le résultat au lieu de laisser l'appli tirer
+const realDice = () => localStorage.getItem('dragonbane.realDice') === '1';
+const setRealDice = (on) => localStorage.setItem('dragonbane.realDice', on ? '1' : '0');
+// Boutons de résultat d'un D20 lancé à la main (même présentation que les jets de mort)
+const realD20Btns = (attr = 'data-r="real"') => `<div class="real-row">
+  <button type="button" class="btn small dd-btn dd-ok" ${attr} data-k="ok">✓ Réussite</button><button type="button" class="btn small dd-btn dd-ko" ${attr} data-k="ko">✗ Échec</button>
+  <button type="button" class="btn small dd-btn dd-dragon" ${attr} data-k="dragon">${ddIcon('dragon')} Dragon (1)</button><button type="button" class="btn small dd-btn dd-demon" ${attr} data-k="demon">${ddIcon('demon')} Démon (20)</button></div>`;
+// Choisir la valeur d'un dé lancé à la main (1 à faces)
+function askDie(title, text, faces, onValue) {
+  openDialog({
+    title,
+    body: `<p>${text}</p><div class="die-pick">${Array.from({ length: faces }, (_, i) => `<button type="button" class="btn" data-v="${i + 1}">${i + 1}</button>`).join('')}</div>`,
+    actions: [cancel],
+    onOpen: (f) => f.querySelectorAll('[data-v]').forEach((b) => { b.onclick = () => { dlg.close(); onValue(+b.dataset.v); }; }),
+  });
+}
 const DMG_MS = 850;
 
-function openRoll({ title, target, attr = null, skill = null, weapon = null, onResult = null, note = '', noPush = false, once = false, extra = [], boons = [], dmgOptions = null, next = null }) {
+function openRoll({ title, target, attr = null, skill = null, weapon = null, onResult = null, note = '', noPush = false, once = false, extra = [], boons = [], dmgOptions = null, next = null, noReal = false }) {
   const c = C();
   const reasons = [];
   if (attr && c.conditions[attr]) reasons.push(`${R.ATTR[attr].cond}`);
@@ -2381,6 +2397,7 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
       <h2>${esc(title)}</h2>
       <div class="roll-target">Réussite sur <b>${target}</b> ou moins</div>
       ${note ? `<p class="small muted center">${note}</p>` : ''}
+      ${noReal ? '' : `<label class="check real-toggle"><input type="checkbox" data-r="realTog" ${realDice() ? 'checked' : ''} ${lock}><span>🎲 Je lance mes dés</span></label>`}
       <div class="bb">
         <div class="bb-col"><span>Avantages</span><div class="step"><button data-r="boon" data-d="-1" ${lock}>−</button><span class="val">${st.boons}</span><button data-r="boon" data-d="1" ${lock}>+</button></div></div>
         <div class="bb-col"><span>Désavantages</span><div class="step"><button data-r="bane" data-d="-1" ${lock}>−</button><span class="val">${st.banes}</span><button data-r="bane" data-d="1" ${lock}>+</button></div></div>
@@ -2389,6 +2406,7 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
       ${reasons.length ? `<p class="small center bad">Désavantage : ${esc(reasons.join(', '))}</p>` : ''}
       <div class="roll-zone">
         ${rolling ? `<div class="dice rolling ${rolling.net > 0 ? 'boon' : rolling.net < 0 ? 'bane' : ''}">${rolling.dice.map(() => dieEl(20, '?')).join('')}</div><div class="verdict wait">…</div>`
+          : r?.manual ? `${verdict}<p class="small center muted">Résultat de tes dés</p>`
           : r ? `<div class="dice ${r.net > 0 ? 'boon' : r.net < 0 ? 'bane' : ''}">${r.dice.map((v, i) => dieEl(20, v, `${r.dice.length > 1 && v !== r.kept ? 'drop' : ''} ${v === 1 ? 'dragon' : v === 20 ? 'demon' : ''}`, `animation-delay:${i * 80}ms`)).join('')}</div>${verdict}` : (() => {
           // Avant le jet : autant de dés que ceux qui seront lancés, et lequel on gardera
           const net = st.boons - st.banes; const n = 1 + Math.abs(net);
@@ -2396,6 +2414,7 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
           return `<div class="dice idle ${kind}">${dieEl(20, '').repeat(n)}</div>
             <p class="small center dice-count ${kind || 'muted'}">${n === 1 ? '1 dé' : `${n} dés : on garde le plus ${net > 0 ? 'petit' : 'grand'}`}</p>`;
         })()}
+        ${!r && !rolling && realDice() && !noReal ? realD20Btns() : ''}
         ${st.msg && !st.rolling && !st.dmgRolling ? `<p class="small center">${st.msg}</p>` : ''}
         ${st.dmg ? (st.heal ? `<div class="heal-wrap">${dmgBox(st.dmg, st.dmgRolling, 'PV récupérés')}</div>` : dmgBox(st.dmg, st.dmgRolling, 'Dégâts')) : ''}
       </div>
@@ -2403,7 +2422,8 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
       <div class="dlg-actions">
         <button class="btn ghost" data-r="close">Fermer</button><span class="spacer"></span>
         ${next && r?.success ? `<button class="btn gold" data-r="next">${next.label}</button>` : ''}
-        ${once && st.res ? '' : `<button class="btn ${next && r?.success ? 'ghost' : ''}" data-r="roll" ${st.rolling || st.dmgRolling ? 'disabled' : ''}>${icon('d20')} ${r ? 'Nouveau jet' : 'Lancer'}</button>`}
+        ${once && st.res ? '' : realDice() && !noReal ? (r ? `<button class="btn ${next && r?.success ? 'ghost' : ''}" data-r="again">${icon('d20')} Nouveau jet</button>` : '')
+          : `<button class="btn ${next && r?.success ? 'ghost' : ''}" data-r="roll" ${st.rolling || st.dmgRolling ? 'disabled' : ''}>${icon('d20')} ${r ? 'Nouveau jet' : 'Lancer'}</button>`}
       </div>
       ${weapon && r?.success ? `<div class="dmg-opts">${dmgOpts.map((o, i) => `<button class="btn gold ${i ? 'small' : ''}" data-r="dmg" data-o="${i}" ${(o.wp && c.wp.cur < o.wp) || st.dmgRolling ? 'disabled' : ''}>${esc(o.label)}</button>`).join('')}</div>` : ''}
     </div>`;
@@ -2412,6 +2432,15 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
   };
   const roll = () => {
     st.res = R.rollD20(target, st.boons, st.banes);
+    settle();
+    st.rolling = true;
+  };
+  // Résultat indiqué (vrais dés)
+  const real = (k) => {
+    st.res = { success: k === 'ok' || k === 'dragon', dragon: k === 'dragon', demon: k === 'demon', dice: [], kept: null, net: st.boons - st.banes, manual: true };
+    settle();
+  };
+  const settle = () => {
     st.dmg = null; st.msg = '';
     if (skill && (st.res.dragon || st.res.demon) && !skill.mark) {
       skill.mark = 'jeu';
@@ -2421,13 +2450,13 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
     if (st.res.dragon && weapon) st.msg += ' Coup critique : effet bonus au choix.';
     if (st.res.demon && skill?.kind === 'magie') st.msg += ' Incident magique !';
     onResult?.(st.res, st);
-    st.rolling = true;
   };
   dlg.onclick = (e) => {
     const b = e.target.closest('[data-r]');
     if (!b) return;
     const k = b.dataset.r;
     if (k === 'close') { dlg.close(); render(); return; }
+    if (k === 'realTog' && b.tagName !== 'INPUT') return;
     if (st.rolling || st.dmgRolling) return;
     if (k === 'boon' || k === 'bane') {
       // Jet unique déjà compté (jet de mort) : on ne change plus rien
@@ -2437,12 +2466,20 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
       // Changer avantages ou désavantages oublie le jet précédent : on revient à l'aperçu des dés
       st.res = null; st.dmg = null; st.msg = ''; st.pushed = false;
     }
+    if (k === 'realTog') {
+      if (once && st.res) return;
+      setRealDice(b.checked); st.res = null; st.dmg = null; st.msg = ''; st.pushed = false;
+    }
     if (k === 'roll') { st.pushed = false; roll(); }
+    if (k === 'real') real(b.dataset.k);
+    if (k === 'again') { st.pushed = false; st.res = null; st.dmg = null; st.msg = ''; }
     if (k === 'push') {
       c.conditions[b.dataset.k] = true; st.pushed = true;
       commit(false);
-      roll();
-      st.msg = `Jet forcé : tu es ${R.ATTR[b.dataset.k].cond.toLowerCase()}. ${st.msg}`;
+      if (realDice() && !noReal) { st.res = null; st.dmg = null; st.msg = `Jet forcé : tu es ${R.ATTR[b.dataset.k].cond.toLowerCase()}. Relance tes dés et indique le résultat.`; } else {
+        roll();
+        st.msg = `Jet forcé : tu es ${R.ATTR[b.dataset.k].cond.toLowerCase()}. ${st.msg}`;
+      }
     }
     if (k === 'dmg') {
       const o = dmgOpts[+b.dataset.o];
@@ -2450,8 +2487,11 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
         if (c.wp.cur < o.wp) { toast('Pas assez de points de volonté'); return; }
         c.wp.cur -= o.wp; commit(false);
       }
-      st.dmg = R.rollExpr(o.expr); st.dmgRolling = true;
-      st.msg = o.name ? `${esc(o.name)} : −${o.wp} PVol (il t’en reste ${c.wp.cur}).` : '';
+      const wpMsg = o.name ? `${esc(o.name)} : −${o.wp} PVol (il t’en reste ${c.wp.cur}). ` : '';
+      if (realDice() && !noReal) { st.dmg = null; st.msg = `${wpMsg}Dégâts : lance <b>${esc(o.expr)}</b> avec tes dés.`; } else {
+        st.dmg = R.rollExpr(o.expr); st.dmgRolling = true;
+        st.msg = wpMsg;
+      }
     }
     if (k === 'next') { next.onClick(); return; }
     draw();
@@ -3004,11 +3044,17 @@ const A = {
         ${group.shared && C()?.journal?.length ? `<button type="button" data-m="jImport">${icon('upload')} Verser mon journal perso dans le groupe</button>` : ''}
         <button type="button" data-m="manual">${icon('book')} Manuel d’utilisation</button>
         <button type="button" data-m="soundToggle">${icon('d20')} Son des dés : ${snd.soundOn() ? 'activé' : 'coupé'}</button>
+        <button type="button" data-m="realToggle">🎲 Dés : ${realDice() ? 'je lance mes propres dés' : 'l’appli lance les dés'}</button>
       </div>
       <p class="small muted center">Fiche Dragonbane · fonctionne hors ligne</p>`,
       actions: [closeBtn],
       onOpen: (f) => f.querySelectorAll('[data-m]').forEach((b) => { b.onclick = () => { dlg.close(); setTimeout(() => A[b.dataset.m]()); }; }),
     });
+  },
+  realToggle() {
+    setRealDice(!realDice());
+    toast(realDice() ? 'Tu lances tes dés : indique le résultat de chaque jet' : 'L’appli lance les dés');
+    render();
   },
   soundToggle() {
     snd.setSound(!snd.soundOn());
@@ -3271,7 +3317,8 @@ const A = {
   music() { const c = C(); c.music = !c.music; commit(); toast(c.music ? '♪ Le barde joue : avantage à tous tes jets' : 'La musique s’arrête'); },
   deathRoll() {
     const c = C();
-    openRoll({ title: 'Jet de mort', target: c.attrs.CON, attr: 'CON', noPush: true, once: true, note: `Réussites ${c.death.succ}/3 · Échecs ${c.death.fail}/3 · un Dragon compte double, un Démon aussi`, onResult: (r, st) => {
+    if (realDice()) { toast('Tu lances tes dés : indique le résultat avec les boutons à côté des cases'); return; }
+    openRoll({ noReal: true, title: 'Jet de mort', target: c.attrs.CON, attr: 'CON', noPush: true, once: true, note: `Réussites ${c.death.succ}/3 · Échecs ${c.death.fail}/3 · un Dragon compte double, un Démon aussi`, onResult: (r, st) => {
       const heal = R.rollExpr('D6');
       const before = c.death.succ;
       st.msg = deathApply(c, r, heal.total);
@@ -3313,9 +3360,14 @@ const A = {
       return;
     }
     if (r === 'round') {
-      const res = R.rollExpr('D6'); const before = c.wp.cur;
-      c.wp.cur = Math.min(R.maxWP(c), c.wp.cur + res.total); c.rests.round = true; commit();
-      healRoll('Repos de round', [{ label: 'PVol', res }], `+${c.wp.cur - before} PVol (${c.wp.cur}/${R.maxWP(c)})`);
+      const apply = (n, res) => {
+        const before = c.wp.cur;
+        c.wp.cur = Math.min(R.maxWP(c), c.wp.cur + n); c.rests.round = true; commit();
+        const msg = `+${c.wp.cur - before} PVol (${c.wp.cur}/${R.maxWP(c)})`;
+        if (res) healRoll('Repos de round', [{ label: 'PVol', res }], msg); else toast(`Repos de round : ${msg}`);
+      };
+      if (realDice()) askDie('Repos de round', 'Lance un <b>D6</b> : combien de PVol récupères-tu ?', 6, (v) => apply(v));
+      else { const res = R.rollExpr('D6'); apply(res.total, res); }
     }
     if (r === 'stretch') {
       const conds = R.ATTRS.filter((a) => c.conditions[a.key]);
@@ -3323,9 +3375,13 @@ const A = {
         title: 'Repos court',
         body: `<p class="small">Un intervalle de temps : D6 PV (2D6 si quelqu’un te soigne et réussit un jet de Soins), D6 PVol et un état guéri.</p>
           ${conds.length ? F.select('cond', 'État à guérir', conds[0].key, [...conds.map((a) => [a.key, a.cond]), ['', 'Aucun']], 'full') : '<p class="small muted">Aucun état à guérir.</p>'}
-          ${F.check('tended', 'Soigné par quelqu’un (jet de Soins réussi) : 2D6 PV', false)}`,
+          ${F.check('tended', 'Soigné par quelqu’un (jet de Soins réussi) : 2D6 PV', false)}
+          ${realDice() ? `<div class="fields"><div class="field"><label>PV récupérés (tes dés : D6, ou 2D6 si soigné)</label><input type="number" name="hpv" min="1" max="12" inputmode="numeric" required></div><div class="field"><label>PVol récupérés (tes dés : D6)</label><input type="number" name="wpv" min="1" max="6" inputmode="numeric" required></div></div>` : ''}`,
         actions: [cancel, { label: 'Se reposer', primary: true, onClick: (f) => {
-          const hr = R.rollExpr(f.tended.checked ? '2D6' : 'D6'); const wr = R.rollExpr('D6');
+          const manual = !!f.hpv;
+          if (manual && (!(+f.hpv.value >= 1) || !(+f.wpv.value >= 1))) { toast('Indique les PV et PVol de tes dés'); return false; }
+          const hr = manual ? { total: Math.min(f.tended.checked ? 12 : 6, +f.hpv.value) } : R.rollExpr(f.tended.checked ? '2D6' : 'D6');
+          const wr = manual ? { total: Math.min(6, +f.wpv.value) } : R.rollExpr('D6');
           const hp0 = c.hp.cur; const wp0 = c.wp.cur;
           c.rests.stretch = true;
           c.hp.cur = Math.min(R.maxHP(c), c.hp.cur + hr.total); c.wp.cur = Math.min(R.maxWP(c), c.wp.cur + wr.total);
@@ -3333,7 +3389,9 @@ const A = {
           if (f.cond?.value) c.conditions[f.cond.value] = false;
           if (c.hp.cur > 0) c.death = { succ: 0, fail: 0 };
           commit();
-          setTimeout(() => healRoll('Repos court', [{ label: 'PV', res: hr }, { label: 'PVol', res: wr }], `+${c.hp.cur - hp0} PV (${c.hp.cur}/${R.maxHP(c)}) · +${c.wp.cur - wp0} PVol (${c.wp.cur}/${R.maxWP(c)})${cured ? ` · ${esc(cured)} guéri` : ''}`));
+          const msg = `+${c.hp.cur - hp0} PV (${c.hp.cur}/${R.maxHP(c)}) · +${c.wp.cur - wp0} PVol (${c.wp.cur}/${R.maxWP(c)})${cured ? ` · ${esc(cured)} guéri` : ''}`;
+          if (manual) toast(`Repos court : ${msg}`);
+          else setTimeout(() => healRoll('Repos court', [{ label: 'PV', res: hr }, { label: 'PVol', res: wr }], msg));
         } }],
       });
     }
@@ -3513,10 +3571,21 @@ const A = {
     const c = C();
     const marked = c.skills.filter((s) => s.mark);
     if (!marked.length) return;
+    // Avec tes dés : un D20 par compétence cochée, tu indiques celles qui ont dépassé leur niveau
+    if (realDice() && !A.advanceRolls.manual) {
+      openDialog({
+        title: 'Jets d’amélioration',
+        body: `<p class="small">Lance un <b>D20</b> par compétence : plus haut que son niveau, elle gagne +1 (18 au plus). Coche celles qui ont réussi.</p>
+          <div class="checks one">${marked.map((s) => F.check(`up_${s.id}`, `${esc(s.name)} <small>niveau ${s.value} : il faut ${s.value + 1} ou plus</small>`, false)).join('')}</div>`,
+        actions: [cancel, { label: 'Valider', primary: true, onClick: (f) => { const ups = new Set(marked.filter((s) => f[`up_${s.id}`].checked).map((s) => s.id)); setTimeout(() => { A.advanceRolls.manual = ups; try { A.advanceRolls(); } finally { A.advanceRolls.manual = null; } }); } }],
+      });
+      return;
+    }
+    const manualUps = A.advanceRolls.manual;
     const prev = marked.map((s) => ({ id: s.id, value: s.value, mark: s.mark }));
     const results = marked.map((s) => {
-      const roll = R.d(20);
-      const up = roll > s.value && s.value < 18;
+      const roll = manualUps ? null : R.d(20);
+      const up = (manualUps ? manualUps.has(s.id) : roll > s.value) && s.value < 18;
       const before = s.value;
       if (up) s.value += 1;
       s.mark = false;
@@ -3528,7 +3597,7 @@ const A = {
     const reached = ups.filter((r) => r.s.value >= 18);
     openDialog({
       title: 'Jets d’amélioration',
-      body: `<div class="adv-list">${results.map((r) => `<div class="adv ${r.up ? 'up' : ''}"><span>${esc(r.s.name)}</span>${dieEl(20, r.roll, `small ${r.roll === 1 ? 'dragon' : r.roll === 20 ? 'demon' : ''}`)}<b>${r.up ? `${r.before} → ${r.s.value}` : `${r.before}`}</b></div>`).join('')}</div>
+      body: `<div class="adv-list">${results.map((r) => `<div class="adv ${r.up ? 'up' : ''}"><span>${esc(r.s.name)}</span>${r.roll === null ? '<span class="small muted">tes dés</span>' : dieEl(20, r.roll, `small ${r.roll === 1 ? 'dragon' : r.roll === 20 ? 'demon' : ''}`)}<b>${r.up ? `${r.before} → ${r.s.value}` : `${r.before}`}</b></div>`).join('')}</div>
         <p class="small center">${ups.length} compétence${ups.length > 1 ? 's' : ''} améliorée${ups.length > 1 ? 's' : ''} sur ${results.length}.</p>
         ${reached.length ? `<p class="small center"><b>${reached.map((r) => esc(r.s.name)).join(', ')}</b> atteint 18 : tu gagnes immédiatement une nouvelle capacité héroïque !</p>` : ''}`,
       actions: [
