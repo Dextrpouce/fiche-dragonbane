@@ -497,7 +497,7 @@ function viewCombat(c) {
     </section>
     <section class="card">
       <h2>Dés</h2>
-      <div class="dice-btns">${[4, 6, 8, 10, 12, 20].map((n) => `<button class="die-btn" data-act="freeRoll" data-e="D${n}">D${n}</button>`).join('')}
+      <div class="dice-btns">${[4, 6, 8, 10, 12, 20].map((n) => `<button class="die-btn" data-act="freeRoll" data-e="D${n}">${dieSvg(n, 'mini')}D${n}</button>`).join('')}
         <button class="die-btn wide" data-act="freeRoll" data-e="">Autre…</button></div>
     </section>
   </div>`;
@@ -1352,6 +1352,30 @@ function sneakAttack(i) {
 
 // extra : désavantages en plus · boons : avantages en plus · dmgOptions : boutons de dégâts [{label, expr, wp, name}]
 // next : bouton proposé après une réussite ({label, onClick}) pour enchaîner un autre jet
+// ----- Dés dessinés selon leur forme (vue de face) : D4 triangle, D6 carré, D8 losange, D10 cerf-volant,
+// D12 pentagone, D20 hexagone avec son triangle central. Les autres : rond. -----
+const DIE_SHAPES = {
+  4: { face: '<polygon points="50,6 96,90 4,90"/>' },
+  6: { face: '<rect x="10" y="10" width="80" height="80" rx="12"/>', edge: '<path d="M22 22h56v56H22z"/>' },
+  8: { face: '<polygon points="50,4 95,50 50,96 5,50"/>', edge: '<path d="M5 50H95"/>' },
+  10: { face: '<polygon points="50,4 95,36 95,54 50,96 5,54 5,36"/>', edge: '<path d="M5 36 50 60 95 36M50 60V96M50 4V22"/>' },
+  12: { face: '<polygon points="50,6 94,38 77,91 23,91 6,38"/>', edge: '<polygon points="50,24 74,42 65,72 35,72 26,42"/>' },
+  20: { face: '<polygon points="50,4 90,27 90,73 50,96 10,73 10,27"/>',
+    edge: '<path d="M50 26 79 70H21z M50 26V4 M50 26 90 27 M50 26 10 27 M79 70 90 27 M79 70 90 73 M79 70 50 96 M21 70 50 96 M21 70 10 73 M21 70 10 27"/>' },
+};
+const dieSvg = (f, cls = '') => {
+  const s = DIE_SHAPES[f] || { face: '<circle cx="50" cy="50" r="44"/>' };
+  return `<svg class="die-shape ${cls}" viewBox="0 0 100 100" aria-hidden="true"><g class="face">${s.face}</g>${s.edge ? `<g class="edge">${s.edge}</g>` : ''}</svg>`;
+};
+// Un dé : sa forme et sa valeur (data-max sert à l'animation : nombres de 1 à f)
+const dieEl = (f, v, cls = '', style = '') => `<span class="die d${f} ${cls}" ${style ? `style="${style}"` : ''}>${dieSvg(f)}<b data-max="${f}">${v}</b></span>`;
+// Bloc de dégâts : chaque dé tiré, la partie fixe, puis le total
+function dmgBox(res, rolling, label = '', big = false) {
+  return `<div class="dmg ${big ? 'big' : ''} ${rolling ? 'rolling' : ''}">${label ? `<span>${label}</span>` : ''}
+    <div class="dice dmg-dice">${(res.dice || []).map((d) => dieEl(d.f, rolling ? '?' : d.v, `small ${d.neg ? 'neg' : ''}`)).join('')}${res.flat ? `<span class="dmg-flat">${res.flat > 0 ? '+' : '−'}${Math.abs(res.flat)}</span>` : ''}</div>
+    <b class="dmg-total" data-max="${Math.max(res.max || 0, res.total, 2)}">${rolling ? '?' : res.total}</b><small>${rolling ? 'Les dés roulent…' : esc(res.detail)}</small></div>`;
+}
+
 // ----- Suspense : les dés roulent un instant avant d'afficher le résultat (déjà tiré) -----
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 // Fait défiler des nombres au hasard (1 à max) dans les éléments, de plus en plus lentement, puis appelle done.
@@ -1366,7 +1390,7 @@ function spin(els, max, ms, done) {
     const t = performance.now() - start;
     if (t >= ms) { snd.land(n); done(); return; }
     snd.rattle(n);
-    els.forEach((e) => { e.textContent = 1 + Math.floor(Math.random() * max); });
+    els.forEach((e) => { e.textContent = 1 + Math.floor(Math.random() * (+e.dataset.max || max)); });
     setTimeout(tick, 45 + 190 * (t / ms) ** 2);
   };
   tick();
@@ -1404,16 +1428,16 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
       ${boosts.length ? `<p class="small center boon">Avantage : ${esc(boosts.join(', '))}</p>` : ''}
       ${reasons.length ? `<p class="small center bad">Désavantage : ${esc(reasons.join(', '))}</p>` : ''}
       <div class="roll-zone">
-        ${rolling ? `<div class="dice rolling ${rolling.net > 0 ? 'boon' : rolling.net < 0 ? 'bane' : ''}">${rolling.dice.map(() => '<span class="die">?</span>').join('')}</div><div class="verdict wait">…</div>`
-          : r ? `<div class="dice ${r.net > 0 ? 'boon' : r.net < 0 ? 'bane' : ''}">${r.dice.map((v, i) => `<span class="die ${r.dice.length > 1 && v !== r.kept ? 'drop' : ''} ${v === 1 ? 'dragon' : v === 20 ? 'demon' : ''}" style="animation-delay:${i * 80}ms">${v}</span>`).join('')}</div>${verdict}` : (() => {
+        ${rolling ? `<div class="dice rolling ${rolling.net > 0 ? 'boon' : rolling.net < 0 ? 'bane' : ''}">${rolling.dice.map(() => dieEl(20, '?')).join('')}</div><div class="verdict wait">…</div>`
+          : r ? `<div class="dice ${r.net > 0 ? 'boon' : r.net < 0 ? 'bane' : ''}">${r.dice.map((v, i) => dieEl(20, v, `${r.dice.length > 1 && v !== r.kept ? 'drop' : ''} ${v === 1 ? 'dragon' : v === 20 ? 'demon' : ''}`, `animation-delay:${i * 80}ms`)).join('')}</div>${verdict}` : (() => {
           // Avant le jet : autant de dés que ceux qui seront lancés, et lequel on gardera
           const net = st.boons - st.banes; const n = 1 + Math.abs(net);
           const kind = net > 0 ? 'boon' : net < 0 ? 'bane' : '';
-          return `<div class="dice idle ${kind}">${`<span class="die">${icon('d20')}</span>`.repeat(n)}</div>
+          return `<div class="dice idle ${kind}">${dieEl(20, '').repeat(n)}</div>
             <p class="small center dice-count ${kind || 'muted'}">${n === 1 ? '1 dé' : `${n} dés : on garde le plus ${net > 0 ? 'petit' : 'grand'}`}</p>`;
         })()}
         ${st.msg && !st.rolling && !st.dmgRolling ? `<p class="small center">${st.msg}</p>` : ''}
-        ${st.dmg ? `<div class="dmg ${st.dmgRolling ? 'rolling' : ''}"><span>Dégâts</span><b>${st.dmgRolling ? '?' : st.dmg.total}</b><small>${st.dmgRolling ? 'Les dés roulent…' : esc(st.dmg.detail)}</small></div>` : ''}
+        ${st.dmg ? dmgBox(st.dmg, st.dmgRolling, 'Dégâts') : ''}
       </div>
       ${canPush ? `<div class="push"><p class="small"><b>Forcer le jet ?</b> Relance en acceptant un état :</p><div class="conds small">${free.map((a) => `<button class="cond-chip" data-r="push" data-k="${a.key}"><b>${a.cond}</b><small>${a.key}</small></button>`).join('')}</div></div>` : ''}
       <div class="dlg-actions">
@@ -1423,8 +1447,8 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
       </div>
       ${weapon && r?.success ? `<div class="dmg-opts">${dmgOpts.map((o, i) => `<button class="btn gold ${i ? 'small' : ''}" data-r="dmg" data-o="${i}" ${(o.wp && c.wp.cur < o.wp) || st.dmgRolling ? 'disabled' : ''}>${esc(o.label)}</button>`).join('')}</div>` : ''}
     </div>`;
-    if (st.rolling) spin(dlg.querySelectorAll('.dice.rolling .die'), 20, DICE_MS, () => { st.rolling = false; draw(); });
-    if (st.dmgRolling) spin(dlg.querySelectorAll('.dmg.rolling b'), Math.max(st.dmg.max || 0, st.dmg.total, 2), DMG_MS, () => { st.dmgRolling = false; draw(); });
+    if (st.rolling) spin(dlg.querySelectorAll('.dice.rolling .die b'), 20, DICE_MS, () => { st.rolling = false; draw(); });
+    if (st.dmgRolling) spin(dlg.querySelectorAll('.dmg.rolling [data-max]'), 6, DMG_MS, () => { st.dmgRolling = false; draw(); });
   };
   const roll = () => {
     st.res = R.rollD20(target, st.boons, st.banes);
@@ -1480,13 +1504,13 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
 function freeRoll(expr) {
   const go = (e) => {
     const r = R.rollExpr(e);
-    openDialog({ title: e.toUpperCase(), body: `<div class="dmg big rolling"><b>?</b><small>Les dés roulent…</small></div>`,
+    openDialog({ title: e.toUpperCase(), body: `<div class="dmg-wrap">${dmgBox(r, true, '', true)}</div>`,
       actions: [closeBtn, { label: 'Relancer', primary: true, onClick: () => { go(e); return false; } }],
       onOpen: (f) => {
-        const box = f.querySelector('.dmg'); const relaunch = f.querySelector('.dlg-actions [type=submit]');
+        const wrap = f.querySelector('.dmg-wrap'); const relaunch = f.querySelector('.dlg-actions [type=submit]');
         if (relaunch) relaunch.disabled = true;
-        spin([box.querySelector('b')], Math.max(r.max || 0, r.total, 2), DMG_MS, () => {
-          box.classList.remove('rolling'); box.querySelector('b').textContent = r.total; box.querySelector('small').textContent = r.detail;
+        spin(wrap.querySelectorAll('[data-max]'), 6, DMG_MS, () => {
+          wrap.innerHTML = dmgBox(r, false, '', true);
           if (relaunch) relaunch.disabled = false;
         });
       } });
@@ -2253,7 +2277,7 @@ const A = {
     const reached = ups.filter((r) => r.s.value >= 18);
     openDialog({
       title: 'Jets d’amélioration',
-      body: `<div class="adv-list">${results.map((r) => `<div class="adv ${r.up ? 'up' : ''}"><span>${esc(r.s.name)}</span><span class="die small ${r.roll === 1 ? 'dragon' : r.roll === 20 ? 'demon' : ''}">${r.roll}</span><b>${r.up ? `${r.before} → ${r.s.value}` : `${r.before}`}</b></div>`).join('')}</div>
+      body: `<div class="adv-list">${results.map((r) => `<div class="adv ${r.up ? 'up' : ''}"><span>${esc(r.s.name)}</span>${dieEl(20, r.roll, `small ${r.roll === 1 ? 'dragon' : r.roll === 20 ? 'demon' : ''}`)}<b>${r.up ? `${r.before} → ${r.s.value}` : `${r.before}`}</b></div>`).join('')}</div>
         <p class="small center">${ups.length} compétence${ups.length > 1 ? 's' : ''} améliorée${ups.length > 1 ? 's' : ''} sur ${results.length}.</p>
         ${reached.length ? `<p class="small center"><b>${reached.map((r) => esc(r.s.name)).join(', ')}</b> atteint 18 : tu gagnes immédiatement une nouvelle capacité héroïque !</p>` : ''}`,
       actions: [

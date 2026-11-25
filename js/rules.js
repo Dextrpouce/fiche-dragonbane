@@ -314,6 +314,7 @@ export const d = (n) => 1 + Math.floor(Math.random() * n);
 export function rollExpr(expr) {
   const parts = String(expr || '').toUpperCase().replace(/\s+/g, '').match(/[+-]?[^+-]+/g) || [];
   let total = 0; let detail = ''; let max = 0; // max : plus grand total possible (pour l'animation)
+  const dice = []; let flat = 0; // chaque dé tiré { f: faces, v: valeur, neg } et la partie fixe (+2…)
   for (const p of parts) {
     const sign = p.startsWith('-') ? -1 : 1;
     const t = p.replace(/^[+-]/, '');
@@ -324,11 +325,12 @@ export function rollExpr(expr) {
       const rolls = Array.from({ length: n }, () => d(f));
       total += sign * rolls.reduce((a, b) => a + b, 0);
       if (sign > 0) max += n * f;
+      rolls.forEach((v) => dice.push({ f, v, neg: sign < 0 }));
       txt = `${n > 1 ? n : ''}D${f} [${rolls.join(', ')}]`;
-    } else if (/^\d+$/.test(t)) { total += sign * +t; if (sign > 0) max += +t; txt = t; }
+    } else if (/^\d+$/.test(t)) { total += sign * +t; flat += sign * +t; if (sign > 0) max += +t; txt = t; }
     if (txt) detail += `${detail ? (sign < 0 ? ' − ' : ' + ') : (sign < 0 ? '−' : '')}${txt}`;
   }
-  return { total: Math.max(0, total), detail, max };
+  return { total: Math.max(0, total), detail, max, dice, flat };
 }
 
 // Jet de D20 sous une valeur, avec avantages (boons) et désavantages (banes) qui s'annulent

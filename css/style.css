@@ -379,22 +379,26 @@ dialog#dlg > .card.wide { max-width: none; }
 .roll-zone { min-height: 120px; display: flex; flex-direction: column; justify-content: center; }
 .dice { display: flex; justify-content: center; gap: 14px; margin: 8px 0; }
 .die {
-  width: 72px; height: 72px; display: grid; place-items: center; font-family: var(--font-title); font-size: 34px;
-  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
-  background: radial-gradient(circle at 35% 30%, #fff8ea, #e5d3ab);
-  color: var(--ink); animation: tumble .45s ease-out both;
+  --die-fill: #fbf1dc; --die-fill2: #e2cfa4; --die-line: #8a6a3a; --die-ink: var(--ink);
+  position: relative; width: 72px; height: 72px; display: grid; place-items: center; font-family: var(--font-title); font-size: 30px;
+  animation: tumble .45s ease-out both;
 }
-.dice.idle .die { animation: none; color: var(--ink-soft); }
-.dice.idle .die svg { width: 40px; height: 40px; stroke-width: 1.4; }
+.die .die-shape { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 2px 2px rgba(40, 20, 5, .3)); }
+.die .face > * { fill: var(--die-fill); stroke: var(--die-line); stroke-width: 3; stroke-linejoin: round; }
+.die .edge > * { fill: none; stroke: var(--die-line); stroke-width: 1.4; stroke-linejoin: round; opacity: .4; }
+.die b { position: relative; font-weight: 400; color: var(--die-ink); line-height: 1; text-shadow: 0 1px 0 rgba(255, 255, 255, .5); }
+.die.d4 b { margin-top: 26%; } .die.d10 b { margin-top: -6%; } .die.d8 b, .die.d12 b { margin-top: 4%; }
+.dice.idle .die { animation: none; opacity: .75; }
 .die.drop { opacity: .35; transform: scale(.85); }
-.die.dragon { background: radial-gradient(circle at 35% 30%, var(--gold-hi), var(--gold)); color: #3a2405; }
-.die.demon { background: radial-gradient(circle at 35% 30%, #5a1a16, #1d0907); color: #f6cfc8; }
-.die.small { width: 40px; height: 40px; font-size: 20px; animation: none; }
+.die.dragon { --die-fill: #f1cf7c; --die-line: #8a5d0c; --die-ink: #3a2405; }
+.die.demon { --die-fill: #3a110e; --die-line: #1d0907; --die-ink: #f6cfc8; }
+.die.demon b { text-shadow: none; }
+.die.small { width: 44px; height: 44px; font-size: 19px; animation: none; }
 @keyframes tumble { from { transform: rotate(-200deg) scale(.4); opacity: 0; } }
 .dmg { display: flex; flex-direction: column; align-items: center; margin-top: 6px; }
 .dmg span { font-family: var(--font-title); color: var(--ink-soft); }
-.dmg b { font-family: var(--font-title); font-weight: 400; font-size: 44px; color: var(--red); line-height: 1.1; }
-.dmg.big b { font-size: 72px; }
+.dmg > b { font-family: var(--font-title); font-weight: 400; font-size: 44px; color: var(--red); line-height: 1.1; }
+.dmg.big > b { font-size: 72px; }
 .dmg small { color: var(--ink-soft); }
 .push { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 6px; }
 .push .conds { grid-template-columns: repeat(3, 1fr); }
@@ -440,7 +444,7 @@ dialog#dlg > .card.wide { max-width: none; }
 @media (min-width: 1000px) { #toast { bottom: 24px; } }
 
 /* ---------- Chiffres : police lisible (la police de titre a des chiffres à l'ancienne) ---------- */
-.attr .av, .stat .sv, .skill .sv, .vv, .pool .big, .die, .dmg b, .enc, .armor-total b, .badge, .step .val, .step input,
+.attr .av, .stat .sv, .skill .sv, .vv, .pool .big, .die, .dmg > b, .enc, .armor-total b, .badge, .step .val, .step input,
 .attr-inputs input, .roll-target b, .adv b, .die-btn, .coin .step input {
   font-family: var(--font-body); font-weight: 700; font-variant-numeric: lining-nums tabular-nums;
 }
@@ -611,10 +615,8 @@ nav.tabs button span { white-space: nowrap; }
 .login .or { margin: 10px 0 2px; }
 .login a { color: var(--red); }
 /* Dés teintés : vert-bleu pour l'avantage (on garde le plus petit), rouge pour le désavantage (le plus grand) */
-.dice.boon .die:not(.dragon):not(.demon) { background: radial-gradient(circle at 35% 30%, #eefaf7, #9fd1c6); color: #12493f; }
-.dice.bane .die:not(.dragon):not(.demon) { background: radial-gradient(circle at 35% 30%, #fff0ec, #e7a99f); color: #6e1a16; }
-.dice.idle.boon .die { color: #1f6b5c; }
-.dice.idle.bane .die { color: var(--red-dk); }
+.dice.boon .die:not(.dragon):not(.demon) { --die-fill: #d7efe9; --die-line: #1f6b5c; --die-ink: #12493f; }
+.dice.bane .die:not(.dragon):not(.demon) { --die-fill: #f6d6d0; --die-line: #9a2b24; --die-ink: #6e1a16; }
 .dice-count.bane { color: var(--red); font-weight: 600; }
 /* Suspense : dés qui roulent avant le résultat */
 @keyframes rattle { 0% { transform: rotate(-14deg) translateY(0); } 25% { transform: rotate(10deg) translateY(-6px); } 50% { transform: rotate(-8deg) translateY(2px); } 75% { transform: rotate(14deg) translateY(-4px); } 100% { transform: rotate(-14deg) translateY(0); } }
@@ -622,8 +624,8 @@ nav.tabs button span { white-space: nowrap; }
 .dice.rolling .die:nth-child(2) { animation-duration: .29s; animation-direction: reverse; }
 .dice.rolling .die:nth-child(3) { animation-duration: .35s; }
 .verdict.wait { color: var(--ink-soft); opacity: .6; letter-spacing: 6px; }
-.dmg.rolling b { display: inline-block; animation: rattle .3s linear infinite; color: var(--ink-soft); }
-@media (prefers-reduced-motion: reduce) { .dice.rolling .die, .dmg.rolling b { animation: none; } }
+.dmg.rolling > b { display: inline-block; animation: rattle .3s linear infinite; color: var(--ink-soft); }
+@media (prefers-reduced-motion: reduce) { .dice.rolling .die, .dmg.rolling > b, .dmg.rolling .dmg-dice .die { animation: none; } }
 /* Portrait du personnage */
 .crest.photo { background-size: cover; background-position: center 20%; }
 .portrait-card { padding: 10px; }
@@ -640,3 +642,16 @@ nav.tabs button span { white-space: nowrap; }
   .grid.fiche { grid-template-rows: auto auto 1fr; }
 }
 @media (max-width: 719px) { .portrait img { max-width: 260px; } }
+/* Dégâts : chaque dé tiré, puis le total */
+.dmg-dice { flex-wrap: wrap; gap: 8px; margin: 4px 0 2px; align-items: center; }
+.dmg-dice .die.neg { --die-fill: #f6d6d0; --die-line: #9a2b24; }
+.dmg-flat { font-family: var(--font-title); font-size: 22px; color: var(--ink-soft); }
+.dmg.big .dmg-dice .die.small { width: 56px; height: 56px; font-size: 24px; }
+.dmg.rolling .dmg-dice .die { animation: rattle .3s linear infinite; }
+.dmg.rolling .dmg-dice .die:nth-child(even) { animation-duration: .27s; animation-direction: reverse; }
+
+/* Boutons de dés libres : la forme du dé à côté */
+.die-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.die-btn .mini { width: 22px; height: 22px; }
+.die-btn .mini .face > * { fill: rgba(255, 255, 255, .6); stroke: currentColor; stroke-width: 6; stroke-linejoin: round; }
+.die-btn .mini .edge { display: none; }
