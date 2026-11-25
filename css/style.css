@@ -586,7 +586,7 @@ nav.tabs button span { white-space: nowrap; }
   background: linear-gradient(180deg, rgba(255, 236, 180, .65), rgba(255, 246, 220, .3)); box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .35), 0 2px 8px rgba(80, 50, 10, .18); }
 .purse-acct.main .acct-name b { font-family: var(--font-title); color: #8a5d0c; font-size: 17px; }
 .purse-acct.main .coin-big { background: rgba(255, 255, 255, .6); border-color: rgba(154, 108, 18, .35); }
-.purse-acct.summary .fortune-big { font-size: 22px; font-weight: 700; margin: 6px 0 2px; }
+.caisse.small.neg .coin-big { border-color: rgba(179, 48, 42, .45); background: rgba(179, 48, 42, .07); }
 .purse-acct.summary .group-notes h3 { margin-top: 8px; font-size: 15px; }
 .coin-ico { color: #8a5d0c; display: flex; }
 .coin-ico .i { width: 22px; height: 22px; }

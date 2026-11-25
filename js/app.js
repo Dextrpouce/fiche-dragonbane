@@ -751,7 +751,10 @@ function accountsCard(g) {
   const f = fortune(g);
   const summary = `<div class="purse-acct summary">
       <div class="acct-head"><span class="acct-ico">⚜️</span><span class="acct-name"><b>Fortune du groupe</b><small>Caisse + dépôts + ce qu’on nous doit − ce qu’on doit</small></span></div>
-      <p class="center fortune-big ${f < 0 ? 'bad' : ''}">${f < 0 ? '−' : ''}${fmtMoney(Math.abs(f))}</p>
+      ${(() => { const fm = cuToCoins(Math.abs(f)); const neg = f < 0 ? '−' : '';
+        // Comme la caisse et les comptes : les trois pièces puis le total (en rouge si le groupe doit plus qu'il n'a)
+        return `<div class="caisse small ${f < 0 ? 'neg' : ''}"><span class="coin-big gold"><b>${neg}${fm.or}</b> or</span><span class="coin-big silver"><b>${fm.argent}</b> argent</span><span class="coin-big copper"><b>${fm.cuivre}</b> cuivre</span></div>
+          <p class="small center ${f < 0 ? 'bad' : 'muted'}">Total : ${neg}${fmtMoney(Math.abs(f))}</p>`; })()}
       <div class="group-notes"><h3>Notes du groupe <button class="icon-btn small" data-act="gNotes" aria-label="Modifier les notes">${icon('edit')}</button></h3>
         ${g.notes ? `<p class="small pre">${esc(g.notes)}</p>` : '<p class="small muted">Rendez-vous, promesses, rumeurs… touche le crayon.</p>'}</div>
     </div>`;
