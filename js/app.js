@@ -2,7 +2,7 @@ import * as R from './rules.js';
 import { store } from './store.js';
 import * as L from './library.js';
 import { MANUAL } from './manual.js';
-import { group } from './group.js';
+import { group, ACCOUNT_KINDS, fortune } from './group.js';
 
 // ================= Utilitaires =================
 const $app = document.getElementById('app');
@@ -467,7 +467,7 @@ function viewGroupe(c) {
   const log = shown.map((e) => `<div class="log-row ${e.undone ? 'undone' : ''} ${e.pending ? 'pending' : ''}">
       <span class="log-date">${fmtWhen(e.date)}</span>
       <span class="log-txt">${e.pending ? '⏳ ' : ''}${esc(e.text ?? e.label ?? '')}${e.who ? ` <span class="muted">· ${esc(e.who)}</span>` : ''}</span>
-      <span class="log-amt ${e.sign < 0 ? 'bad' : 'good'}">${e.amount ? `${e.sign < 0 ? '−' : '+'}${fmtMoney(e.amount)}` : ''}</span>
+      <span class="log-amt ${e.sign === 0 ? 'muted' : e.sign < 0 ? 'bad' : 'good'}">${e.amount ? `${e.sign === 0 ? '' : e.sign < 0 ? '−' : '+'}${fmtMoney(e.amount)}` : ''}</span>
       ${e === lastUndo ? `<button class="icon-btn small" data-act="gUndo" data-id="${e.id}" title="Annuler">${icon('undo')}</button>` : '<span></span>'}
     </div>`).join('') || '<div class="empty">Aucune modification pour l’instant.</div>';
 
@@ -514,16 +514,18 @@ function viewGroupe(c) {
       <h2>Caisse du groupe</h2>
       <div class="caisse"><span class="coin-big gold"><b>${+g.money.or || 0}</b> or</span><span class="coin-big silver"><b>${+g.money.argent || 0}</b> argent</span><span class="coin-big copper"><b>${+g.money.cuivre || 0}</b> cuivre</span></div>
       <p class="small muted center">Total : ${fmtMoney(totalCopper(g.money))}</p>
+      ${g.accounts.length ? `<p class="center fortune">Fortune du groupe : <b class="${fortune(g) < 0 ? 'bad' : ''}">${fortune(g) < 0 ? '−' : ''}${fmtMoney(Math.abs(fortune(g)))}</b><br><small class="muted">caisse + dépôts + ce qu’on nous doit − ce qu’on doit</small></p>` : ''}
       <div class="add-row center-row">
         <button class="btn" data-act="gMoney" data-s="1">${icon('plus')} Recette</button>
         <button class="btn ghost" data-act="gMoney" data-s="-1">${icon('coin')} Dépense</button>
       </div>
       <div class="group-notes"><h3>Notes du groupe <button class="icon-btn small" data-act="gNotes" aria-label="Modifier les notes">${icon('edit')}</button></h3>
-        ${g.notes ? `<p class="small pre">${esc(g.notes)}</p>` : '<p class="small muted">Dépôts, dettes, promesses… touche le crayon.</p>'}</div>
+        ${g.notes ? `<p class="small pre">${esc(g.notes)}</p>` : '<p class="small muted">Rendez-vous, promesses, rumeurs… touche le crayon.</p>'}</div>
       <h3>Journal</h3>
       ${log}
       ${g.log.length > 25 ? `<div class="add-row center-row"><button class="btn ghost small" data-act="gLogAll">${ui.logAll ? 'Réduire' : `Tout afficher (${g.log.length})`}</button></div>` : ''}
     </section>
+    ${accountsCard(g)}
     ${saleCard(g)}
     ${carriers}
     <section class="card span-all">
@@ -553,6 +555,142 @@ function groupMoneyDialog(sign) {
       const purse = tr ? { cid: c.id, cu: amount, sign: -sign } : undefined;
       if (!gApply({ t: 'money', sign, coins, label, purse }, `${sign > 0 ? 'Caisse +' : 'Caisse −'}${fmtMoney(amount)}`)) return false;
       if (tr) { purseFix(purse); render(); }
+    } }],
+  });
+}
+
+// ----- Comptes : dépôts, dettes, ce qu'on nous doit, projets -----
+// Mouvements possibles selon le type : [libellé, sens (+ / −) du solde, via ('caisse' | '' | 'dep'), texte du journal]
+const ACCOUNT_MOVES = {
+  depot: [
+    ['Déposer (pris dans la caisse)', 1, 'caisse', (a) => `Dépôt chez ${a.name}`],
+    ['Retirer (va dans la caisse)', -1, 'caisse', (a) => `Retrait chez ${a.name}`],
+    ['Dépensé sur place (ne passe pas par la caisse)', -1, '', (a) => `${a.name} : dépense sur place`],
+    ['Ajouté sans passer par la caisse (intérêts…)', 1, '', (a) => `${a.name} : ajout`],
+  ],
+  creance: [
+    ['Encaisser (va dans la caisse)', -1, 'caisse', (a) => `${a.name} nous rembourse`],
+    ['Prêter encore (pris dans la caisse)', 1, 'caisse', (a) => `Prêt à ${a.name}`],
+    ['On ne sera pas payé (effacer)', -1, '', (a) => `${a.name} : dette effacée`],
+  ],
+  dette: [
+    ['Rembourser (pris dans la caisse)', -1, 'caisse', (a) => `Remboursement à ${a.name}`],
+    ['Rembourser avec un dépôt', -1, 'dep', (a, x) => `Remboursement à ${a.name} (payé par ${x.name})`],
+    ['Emprunter encore (va dans la caisse)', 1, 'caisse', (a) => `Emprunt à ${a.name}`],
+    ['La dette augmente (intérêts, pénalité…)', 1, '', (a) => `${a.name} : la dette augmente`],
+    ['Dette effacée', -1, '', (a) => `${a.name} : dette effacée`],
+  ],
+  projet: [
+    ['Payer (pris dans la caisse)', 1, 'caisse', (a) => `Paiement : ${a.name}`],
+    ['Payer avec un dépôt', 1, 'dep', (a, x) => `Paiement : ${a.name} (payé par ${x.name})`],
+    ['Payé autrement (bourse d’un joueur…)', 1, '', (a) => `Paiement : ${a.name} (hors caisse)`],
+  ],
+};
+const accountIcon = { depot: '🏦', creance: '📜', dette: '⚖️', projet: '🏗️' };
+
+function accountsCard(g) {
+  const rows = g.accounts.map((a) => {
+    const kind = ACCOUNT_KINDS[a.kind] || ACCOUNT_KINDS.depot;
+    const bal = +a.bal || 0;
+    let right; let extra = '';
+    if (a.kind === 'projet') {
+      const goal = +a.goal || 0;
+      right = `<b>${fmtMoney(bal)}</b><small>${goal ? `payé sur ${fmtMoney(goal)}` : 'payé'}</small>`;
+      if (goal) {
+        extra = `<div class="bar acct-bar ${bal >= goal ? 'full' : ''}"><i style="width:${clamp(bal / goal * 100, 0, 100)}%"></i></div>
+          <p class="small ${bal >= goal ? 'good' : 'muted'}">${bal >= goal ? 'Payé en entier.' : `Reste à payer : <b>${fmtMoney(goal - bal)}</b>`}</p>`;
+      }
+    } else {
+      right = `<b class="${a.kind === 'dette' ? 'bad' : a.kind === 'creance' ? 'good' : ''}">${a.kind === 'dette' && bal ? '−' : ''}${fmtMoney(bal)}</b><small>${esc(kind.name)}</small>`;
+    }
+    return `<div class="acct">
+      <div class="acct-row">
+        <button class="acct-main" data-act="gAcct" data-id="${a.id}"><span class="acct-ico">${accountIcon[a.kind] || '💰'}</span>
+          <span class="acct-name"><b>${esc(a.name)}</b>${a.notes ? `<small>${esc(a.notes)}</small>` : ''}</span>
+          <span class="acct-bal">${right}</span></button>
+        <button class="icon-btn small" data-act="gEditAcct" data-id="${a.id}" aria-label="Modifier">${icon('edit')}</button>
+      </div>${extra}
+    </div>`;
+  }).join('');
+  return `<section class="card span-all accounts">
+    <h2>Comptes</h2>
+    ${rows || '<div class="empty">Aucun compte. Ajoute un dépôt chez un banquier, une dette, ce qu’on vous doit, ou un projet à payer en plusieurs fois.</div>'}
+    ${rows ? '<p class="small muted hint">Touche un compte pour déposer, retirer, rembourser ou payer : la caisse suit et c’est noté au journal.</p>' : ''}
+    <div class="add-row center-row"><button class="btn ghost small" data-act="gEditAcct">${icon('plus')} Nouveau compte</button></div>
+  </section>`;
+}
+
+// Création / modification d'un compte (le montant de départ ne passe pas par la caisse)
+function groupAccountDialog(a) {
+  const isNew = !a;
+  const cur = a || { kind: 'depot', name: '', bal: 0, goal: 0, notes: '' };
+  const balLabel = (k) => (k === 'projet' ? 'Déjà payé' : k === 'dette' ? 'Montant dû' : k === 'creance' ? 'Montant qu’on nous doit' : 'Montant déposé');
+  openDialog({
+    title: isNew ? 'Nouveau compte' : cur.name,
+    body: `<div class="fields">
+      ${isNew ? F.select('kind', 'Type', cur.kind, Object.entries(ACCOUNT_KINDS).map(([k, v]) => [k, `${accountIcon[k]} ${v.name}`]), 'full') : ''}
+      ${F.text('name', 'Nom', cur.name, 'full', 'autofocus placeholder="Ex. Maître Ulwar, Construction de la maison…"')}
+    </div>
+    <p class="small muted kind-note">${esc(ACCOUNT_KINDS[cur.kind].long)}</p>
+    ${isNew ? `<div class="bal-fields">${coinFields('b_', 0, balLabel(cur.kind))}</div>` : `<p class="small">Solde : <b>${fmtMoney(+cur.bal || 0)}</b> <span class="muted">(pour le changer, touche le compte : ce sera noté au journal)</span></p>`}
+    <div class="goal-fields" ${cur.kind === 'projet' ? '' : 'hidden'}>${coinFields('g_', cur.goal, 'Coût total')}</div>
+    <div class="fields">${F.area('notes', 'Notes', cur.notes)}</div>
+    ${isNew ? '<p class="small muted">Le montant de départ ne sort pas de la caisse : c’est pour un compte qui existe déjà. Pour y mettre de l’argent de la caisse, crée-le vide puis touche-le.</p>' : ''}`,
+    actions: [
+      ...(!isNew ? [{ label: icon('trash'), cls: 'ghost', onClick: () => {
+        if (+a.bal && !confirm(`${a.name} a encore ${fmtMoney(+a.bal)}. Le supprimer quand même ? (annulable depuis le journal)`)) return false;
+        gApply({ t: 'acctDel', id: a.id });
+      } }, 'spacer'] : []),
+      cancel,
+      { label: 'Enregistrer', primary: true, onClick: (f) => {
+        const kind = isNew ? f.kind.value : cur.kind;
+        const name = f.name.value.trim();
+        if (!name) { toast('Donne un nom au compte'); return false; }
+        const v = { name, notes: f.notes.value.trim(), goal: kind === 'projet' ? totalCopper(readCoins(f, 'g_')) : 0 };
+        if (isNew) return gApply({ t: 'acctAdd', acct: { id: R.uid(), kind, bal: totalCopper(readCoins(f, 'b_')), ...v } }) && undefined;
+        return gApply({ t: 'acctEdit', id: a.id, v }) && undefined;
+      } },
+    ],
+    onOpen: (f) => {
+      if (!isNew) return;
+      f.kind.onchange = () => {
+        const k = f.kind.value;
+        f.querySelector('.kind-note').textContent = ACCOUNT_KINDS[k].long;
+        f.querySelector('.goal-fields').hidden = k !== 'projet';
+        f.querySelector('.bal-fields .coins-label').textContent = balLabel(k);
+      };
+    },
+  });
+}
+
+// Mouvement sur un compte : dépôt, retrait, remboursement, paiement…
+function groupAccountMoveDialog(a) {
+  const g = G();
+  const deposits = g.accounts.filter((x) => x.kind === 'depot' && x.id !== a.id);
+  const opts = [];
+  (ACCOUNT_MOVES[a.kind] || []).forEach(([label, , via], i) => {
+    if (via === 'dep') deposits.forEach((x) => opts.push([`${i}:${x.id}`, `${label} : ${x.name} (${fmtMoney(+x.bal || 0)})`]));
+    else opts.push([`${i}:`, label]);
+  });
+  const bal = +a.bal || 0;
+  const state = a.kind === 'projet' ? `Déjà payé : <b>${fmtMoney(bal)}</b>${+a.goal ? ` sur ${fmtMoney(+a.goal)} (reste ${fmtMoney(Math.max(0, +a.goal - bal))})` : ''}`
+    : `${ACCOUNT_KINDS[a.kind].name} : <b>${fmtMoney(bal)}</b>`;
+  openDialog({
+    title: a.name,
+    body: `<p class="small">${state} · caisse : ${fmtMoney(totalCopper(g.money))}</p>
+      <div class="fields">${F.select('move', 'Opération', opts[0]?.[0] || '', opts, 'full')}</div>
+      <div class="fields three">${F.num('or', 'Or', '', '', 'autofocus')}${F.num('argent', 'Argent', '')}${F.num('cuivre', 'Cuivre', '')}</div>
+      <div class="fields">${F.text('label', 'Motif (facultatif)', '', 'full', 'placeholder="Ex. avance pour les fondations"')}</div>`,
+    actions: [cancel, { label: 'Valider', primary: true, onClick: (f) => {
+      const coins = { or: num(f.or.value), argent: num(f.argent.value), cuivre: num(f.cuivre.value) };
+      const amount = totalCopper(coins);
+      if (!amount) { toast('Indique un montant'); return false; }
+      const [i, depId] = f.move.value.split(':');
+      const [, sign, via, text] = ACCOUNT_MOVES[a.kind][+i];
+      const dep = depId ? g.accounts.find((x) => x.id === depId) : null;
+      const motif = f.label.value.trim();
+      const op = { t: 'acct', id: a.id, d: sign * amount, via: via === 'dep' ? depId : via, coins, label: text(a, dep) + (motif ? ` : ${motif}` : '') };
+      return gApply(op, `${a.name} : ${sign > 0 ? '+' : '−'}${fmtMoney(amount)}`) && undefined;
     } }],
   });
 }
@@ -1797,6 +1935,8 @@ const A = {
   gShareCreate() { shareCreateDialog(); },
   gShareJoin() { shareJoinDialog(); },
   gShareCode() { shareCodeDialog(); },
+  gAcct(el) { const a = G().accounts.find((x) => x.id === el.dataset.id); if (a) groupAccountMoveDialog(a); },
+  gEditAcct(el) { const id = el.dataset.id; groupAccountDialog(id ? G().accounts.find((x) => x.id === id) : null); },
   gAddCarrier() { groupCarrierDialog(null); },
   editArmor(el) {
     const c = C(); const k = el.dataset.k; const a = c[k];

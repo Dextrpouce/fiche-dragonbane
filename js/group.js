@@ -58,7 +58,20 @@ function take(m, x) {
 const fail = (msg) => { throw Object.assign(new Error(msg), { invalid: true }); };
 const qtyTxt = (q) => (n(q) > 1 ? ` ×${q}` : '');
 
-export const EMPTY = () => ({ game: GAME, money: { or: 0, argent: 0, cuivre: 0 }, carriers: [], notes: '', log: [] });
+export const EMPTY = () => ({ game: GAME, money: { or: 0, argent: 0, cuivre: 0 }, carriers: [], accounts: [], notes: '', log: [] });
+
+// ---------- Comptes : argent du groupe gardé ailleurs, dettes, projets ----------
+// bal (en cuivre) : dépôt = ce qui est gardé ; on nous doit = ce qu'on attend ; on doit = ce qu'on doit ;
+// projet = déjà payé (goal = coût total). Seul « on doit » est une dette : le reste compte dans la fortune.
+export const ACCOUNT_KINDS = {
+  depot: { name: 'Dépôt', long: 'Argent gardé par quelqu’un (banquier, marchand…)' },
+  creance: { name: 'On nous doit', long: 'Quelqu’un doit de l’argent au groupe' },
+  dette: { name: 'On doit', long: 'Le groupe doit de l’argent à quelqu’un' },
+  projet: { name: 'Projet', long: 'Une grosse dépense payée en plusieurs fois (construction, bateau…)' },
+};
+// Fortune du groupe : caisse + dépôts + ce qu'on nous doit − ce qu'on doit
+export const fortune = (g) => cu(g.money) + (g.accounts || []).reduce((t, a) => t + (a.kind === 'dette' ? -1 : a.kind === 'projet' ? 0 : 1) * n(a.bal), 0);
+const toCoins = (c) => ({ or: Math.floor(c / 100), argent: Math.floor((c % 100) / 10), cuivre: c % 10 });
 
 // ---------- Opérations : modifient l'état et renvoient la ligne de journal ----------
 // Ligne : { text, amount?, sign?, undo? (opération inverse), purse? (bourse du personnage à corriger si on annule) }
@@ -67,6 +80,7 @@ export function applyOp(s, op) {
   upgradeGroup(s);
   const car = (id) => s.carriers.find((x) => x.id === id) || fail('Monture ou véhicule introuvable (supprimé ?)');
   const item = (k, id) => k.items.find((x) => x.id === id) || fail('Objet introuvable (déjà déplacé ou supprimé ?)');
+  const acct = (id) => s.accounts.find((x) => x.id === id) || fail('Compte introuvable (supprimé ?)');
   switch (op.t) {
     case 'money': {
       if (op.sign > 0) add(s.money, op.coins); else take(s.money, op.coins);
@@ -159,6 +173,54 @@ export function applyOp(s, op) {
       return { text: `${a.name} attelé : ${v.name}${extra}` };
     }
     case 'notes': s.notes = op.v; return { text: 'Notes du groupe modifiées' };
+    case 'acctAdd': {
+      s.accounts.push(op.acct);
+      const a = op.acct;
+      if (op.silent) return { text: '' };
+      const what = a.kind === 'projet' ? `coût ${fmt(n(a.goal))}${n(a.bal) ? `, déjà payé ${fmt(n(a.bal))}` : ''}` : fmt(n(a.bal));
+      return { text: `Nouveau compte : ${a.name} (${ACCOUNT_KINDS[a.kind]?.name || 'compte'}, ${what})`, undo: { t: 'acctDel', id: a.id, silent: true } };
+    }
+    case 'acctEdit': {
+      const a = acct(op.id); const old = { ...a };
+      const changes = [];
+      if (op.v.name !== undefined && op.v.name !== a.name) changes.push(`renommé « ${op.v.name} »`);
+      if (op.v.goal !== undefined && n(op.v.goal) !== n(a.goal)) changes.push(`coût ${fmt(n(a.goal))} → ${fmt(n(op.v.goal))}`);
+      if (op.v.notes !== undefined && op.v.notes !== (a.notes || '')) changes.push('notes modifiées');
+      Object.assign(a, op.v);
+      return changes.length ? { text: `${old.name} : ${changes.join(', ')}` } : { text: '' };
+    }
+    case 'acctDel': {
+      const a = acct(op.id);
+      s.accounts = s.accounts.filter((x) => x.id !== op.id);
+      if (op.silent) return { text: '' };
+      return { text: `Compte supprimé : ${a.name}${n(a.bal) ? ` (${fmt(n(a.bal))})` : ''}`, undo: { t: 'acctAdd', acct: a, silent: true } };
+    }
+    // Mouvement sur un compte : d (cuivre, signé) change le solde ; via = 'caisse', l'id d'un dépôt, ou rien
+    // (l'argent ne passe pas par la caisse : dépense sur place, intérêts, correction).
+    case 'acct': {
+      const a = acct(op.id); const d = Math.round(n(op.d));
+      const cashOut = a.kind === 'dette' ? -d : d; // > 0 : l'argent sort de la caisse (ou du dépôt)
+      if (n(a.bal) + d < 0) fail(`${a.name} : il n’y a que ${fmt(n(a.bal))}`);
+      let raw;
+      if (op.via === 'caisse' && cashOut) {
+        const before = { ...s.money };
+        if (op.raw) add(s.money, op.raw);
+        else if (cashOut > 0) take(s.money, op.coins || cashOut);
+        else add(s.money, op.coins || toCoins(-cashOut));
+        raw = { or: n(before.or) - n(s.money.or), argent: n(before.argent) - n(s.money.argent), cuivre: n(before.cuivre) - n(s.money.cuivre) };
+      } else if (op.via && op.via !== 'caisse' && cashOut) {
+        const x = acct(op.via);
+        if (n(x.bal) - cashOut < 0) fail(`${x.name} : il n’y a que ${fmt(n(x.bal))}`);
+        x.bal = n(x.bal) - cashOut;
+      }
+      a.bal = n(a.bal) + d;
+      const done = a.kind === 'projet' && n(a.goal) && a.bal >= n(a.goal) && a.bal - d < n(a.goal) ? ' : payé en entier !' : '';
+      return {
+        text: (op.label || `${a.name} : ${d > 0 ? '+' : '−'}${fmt(Math.abs(d))}`) + done,
+        amount: Math.abs(d), sign: op.via === 'caisse' ? (cashOut > 0 ? -1 : 1) : 0,
+        undo: { t: 'acct', id: op.id, d: -d, via: op.via, raw },
+      };
+    }
     case 'undo': {
       const e = s.log.find((x) => x.id === op.id) || fail('Ligne du journal introuvable');
       if (e.undone) fail('Déjà annulé');

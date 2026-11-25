@@ -55,6 +55,7 @@ export const MANUAL = [
     <p>Le <b>journal</b> note chaque modification : quand, quoi, et qui (le nom du personnage). Sans réseau, tes modifications attendent (⏳) et partent dès le retour du réseau.</p>
     <ul>
       <li><b>Caisse</b> : Recette ou Dépense. Coche la case pour prendre l’argent dans ta bourse ou l’y verser. Chaque ligne du journal s’annule avec ↶.</li>
+      <li><b>Comptes</b> : l’argent du groupe gardé ailleurs. « Nouveau compte » crée un <b>dépôt</b> (chez un banquier, un marchand), ce qu’<b>on nous doit</b>, ce qu’<b>on doit</b>, ou un <b>projet</b> payé en plusieurs fois (construction…) avec son coût total. Touche un compte pour déposer, retirer, rembourser ou payer (depuis la caisse, avec un dépôt, ou sans passer par la caisse). La <b>fortune du groupe</b> s’affiche sous la caisse : caisse + dépôts + ce qu’on nous doit − ce qu’on doit.</li>
       <li><b>Montures et véhicules</b> : chaque âne et le char ont leur chargement. Ajoute des sacoches de selle (+2), attelle un âne au char avec le harnais.</li>
       <li>Touche un objet pour le déplacer vers un autre transport ou ton sac, ou le marquer <b>à vendre</b> avec sa valeur.</li>
       <li><b>À vendre</b> : la liste de ce qu’on ne garde pas et son total. « Vendu » verse le prix dans la caisse.</li>

@@ -358,12 +358,13 @@ export const newCarrier = (type, name) => ({ id: uid(), type, name: name || CARR
 export function newGroup() {
   const a1 = newCarrier('ane', 'Âne 1'); const a2 = newCarrier('ane', 'Âne 2');
   const cart = newCarrier('char', 'Char');
-  return { money: { or: 0, argent: 0, cuivre: 0 }, log: [], carriers: [a1, a2, cart], notes: '', updatedAt: 0 };
+  return { money: { or: 0, argent: 0, cuivre: 0 }, log: [], carriers: [a1, a2, cart], accounts: [], notes: '', updatedAt: 0 };
 }
 export function upgradeGroup(g) {
   g.money ??= { or: 0, argent: 0, cuivre: 0 };
   g.log ??= [];
   g.carriers ??= [];
+  g.accounts ??= [];
   g.carriers.forEach((k) => { k.id ||= uid(); k.items ??= []; k.pulledBy ??= []; k.saddlebags ??= 0; k.items.forEach((it) => { it.id ||= uid(); }); });
   return g;
 }
