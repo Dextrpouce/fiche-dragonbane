@@ -313,7 +313,7 @@ export const d = (n) => 1 + Math.floor(Math.random() * n);
 // Lance une expression de dés : « 2D6 », « D8+D4 », « D10+2 »
 export function rollExpr(expr) {
   const parts = String(expr || '').toUpperCase().replace(/\s+/g, '').match(/[+-]?[^+-]+/g) || [];
-  let total = 0; let detail = '';
+  let total = 0; let detail = ''; let max = 0; // max : plus grand total possible (pour l'animation)
   for (const p of parts) {
     const sign = p.startsWith('-') ? -1 : 1;
     const t = p.replace(/^[+-]/, '');
@@ -323,11 +323,12 @@ export function rollExpr(expr) {
       const n = +(m[1] || 1); const f = +m[2];
       const rolls = Array.from({ length: n }, () => d(f));
       total += sign * rolls.reduce((a, b) => a + b, 0);
+      if (sign > 0) max += n * f;
       txt = `${n > 1 ? n : ''}D${f} [${rolls.join(', ')}]`;
-    } else if (/^\d+$/.test(t)) { total += sign * +t; txt = t; }
+    } else if (/^\d+$/.test(t)) { total += sign * +t; if (sign > 0) max += +t; txt = t; }
     if (txt) detail += `${detail ? (sign < 0 ? ' − ' : ' + ') : (sign < 0 ? '−' : '')}${txt}`;
   }
-  return { total: Math.max(0, total), detail };
+  return { total: Math.max(0, total), detail, max };
 }
 
 // Jet de D20 sous une valeur, avec avantages (boons) et désavantages (banes) qui s'annulent

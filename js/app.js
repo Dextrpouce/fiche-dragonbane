@@ -1306,6 +1306,26 @@ function sneakAttack(i) {
 
 // extra : désavantages en plus · boons : avantages en plus · dmgOptions : boutons de dégâts [{label, expr, wp, name}]
 // next : bouton proposé après une réussite ({label, onClick}) pour enchaîner un autre jet
+// ----- Suspense : les dés roulent un instant avant d'afficher le résultat (déjà tiré) -----
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Fait défiler des nombres au hasard (1 à max) dans les éléments, de plus en plus lentement, puis appelle done.
+// S'arrête sans rien faire si la fenêtre a été fermée ou remplacée entre-temps.
+function spin(els, max, ms, done) {
+  els = [...els];
+  if (!els.length || reducedMotion()) { done(); return; }
+  const start = performance.now();
+  const tick = () => {
+    if (!els[0].isConnected) return;
+    const t = performance.now() - start;
+    if (t >= ms) { done(); return; }
+    els.forEach((e) => { e.textContent = 1 + Math.floor(Math.random() * max); });
+    setTimeout(tick, 45 + 190 * (t / ms) ** 2);
+  };
+  tick();
+}
+const DICE_MS = 1100;
+const DMG_MS = 850;
+
 function openRoll({ title, target, attr = null, skill = null, weapon = null, onResult = null, note = '', noPush = false, once = false, extra = [], boons = [], dmgOptions = null, next = null }) {
   const c = C();
   const reasons = [];
@@ -1314,15 +1334,17 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
   reasons.push(...extra);
   const boosts = [...(c.music ? ['Musique du barde'] : []), ...boons];
   const dmgOpts = weapon ? (dmgOptions || damageOptions(c, weapon, false)) : [];
-  const st = { boons: boosts.length ? 1 : 0, banes: reasons.length ? 1 : 0, res: null, pushed: false, dmg: null, msg: '' };
+  const st = { boons: boosts.length ? 1 : 0, banes: reasons.length ? 1 : 0, res: null, pushed: false, dmg: null, msg: '', rolling: false, dmgRolling: false };
 
   const draw = () => {
-    const r = st.res;
+    // Pendant que les dés roulent, on cache le verdict et tout ce qui en dépend
+    const r = st.rolling ? null : st.res;
+    const rolling = st.rolling ? st.res : null;
     const free = R.ATTRS.filter((a) => !c.conditions[a.key]);
     const canPush = !noPush && r && !r.success && !r.demon && !st.pushed && free.length;
     const verdict = !r ? '' : r.dragon ? '<div class="verdict dragon">Dragon !</div>' : r.demon ? '<div class="verdict demon">Démon !</div>'
       : r.success ? '<div class="verdict ok">Réussite</div>' : '<div class="verdict ko">Échec</div>';
-    const lock = once && r ? 'disabled' : '';
+    const lock = (once && st.res) || st.rolling || st.dmgRolling ? 'disabled' : '';
     dlg.innerHTML = `<div class="card roll">
       <h2>${esc(title)}</h2>
       <div class="roll-target">Réussite sur <b>${target}</b> ou moins</div>
@@ -1334,24 +1356,27 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
       ${boosts.length ? `<p class="small center boon">Avantage : ${esc(boosts.join(', '))}</p>` : ''}
       ${reasons.length ? `<p class="small center bad">Désavantage : ${esc(reasons.join(', '))}</p>` : ''}
       <div class="roll-zone">
-        ${r ? `<div class="dice ${r.net > 0 ? 'boon' : r.net < 0 ? 'bane' : ''}">${r.dice.map((v, i) => `<span class="die ${r.dice.length > 1 && v !== r.kept ? 'drop' : ''} ${v === 1 ? 'dragon' : v === 20 ? 'demon' : ''}" style="animation-delay:${i * 80}ms">${v}</span>`).join('')}</div>${verdict}` : (() => {
+        ${rolling ? `<div class="dice rolling ${rolling.net > 0 ? 'boon' : rolling.net < 0 ? 'bane' : ''}">${rolling.dice.map(() => '<span class="die">?</span>').join('')}</div><div class="verdict wait">…</div>`
+          : r ? `<div class="dice ${r.net > 0 ? 'boon' : r.net < 0 ? 'bane' : ''}">${r.dice.map((v, i) => `<span class="die ${r.dice.length > 1 && v !== r.kept ? 'drop' : ''} ${v === 1 ? 'dragon' : v === 20 ? 'demon' : ''}" style="animation-delay:${i * 80}ms">${v}</span>`).join('')}</div>${verdict}` : (() => {
           // Avant le jet : autant de dés que ceux qui seront lancés, et lequel on gardera
           const net = st.boons - st.banes; const n = 1 + Math.abs(net);
           const kind = net > 0 ? 'boon' : net < 0 ? 'bane' : '';
           return `<div class="dice idle ${kind}">${`<span class="die">${icon('d20')}</span>`.repeat(n)}</div>
             <p class="small center dice-count ${kind || 'muted'}">${n === 1 ? '1 dé' : `${n} dés : on garde le plus ${net > 0 ? 'petit' : 'grand'}`}</p>`;
         })()}
-        ${st.msg ? `<p class="small center">${st.msg}</p>` : ''}
-        ${st.dmg ? `<div class="dmg"><span>Dégâts</span><b>${st.dmg.total}</b><small>${esc(st.dmg.detail)}</small></div>` : ''}
+        ${st.msg && !st.rolling && !st.dmgRolling ? `<p class="small center">${st.msg}</p>` : ''}
+        ${st.dmg ? `<div class="dmg ${st.dmgRolling ? 'rolling' : ''}"><span>Dégâts</span><b>${st.dmgRolling ? '?' : st.dmg.total}</b><small>${st.dmgRolling ? 'Les dés roulent…' : esc(st.dmg.detail)}</small></div>` : ''}
       </div>
       ${canPush ? `<div class="push"><p class="small"><b>Forcer le jet ?</b> Relance en acceptant un état :</p><div class="conds small">${free.map((a) => `<button class="cond-chip" data-r="push" data-k="${a.key}"><b>${a.cond}</b><small>${a.key}</small></button>`).join('')}</div></div>` : ''}
       <div class="dlg-actions">
         <button class="btn ghost" data-r="close">Fermer</button><span class="spacer"></span>
         ${next && r?.success ? `<button class="btn gold" data-r="next">${next.label}</button>` : ''}
-        ${once && r ? '' : `<button class="btn ${next && r?.success ? 'ghost' : ''}" data-r="roll">${icon('d20')} ${r ? 'Nouveau jet' : 'Lancer'}</button>`}
+        ${once && st.res ? '' : `<button class="btn ${next && r?.success ? 'ghost' : ''}" data-r="roll" ${st.rolling || st.dmgRolling ? 'disabled' : ''}>${icon('d20')} ${r ? 'Nouveau jet' : 'Lancer'}</button>`}
       </div>
-      ${weapon && r?.success ? `<div class="dmg-opts">${dmgOpts.map((o, i) => `<button class="btn gold ${i ? 'small' : ''}" data-r="dmg" data-o="${i}" ${o.wp && c.wp.cur < o.wp ? 'disabled' : ''}>${esc(o.label)}</button>`).join('')}</div>` : ''}
+      ${weapon && r?.success ? `<div class="dmg-opts">${dmgOpts.map((o, i) => `<button class="btn gold ${i ? 'small' : ''}" data-r="dmg" data-o="${i}" ${(o.wp && c.wp.cur < o.wp) || st.dmgRolling ? 'disabled' : ''}>${esc(o.label)}</button>`).join('')}</div>` : ''}
     </div>`;
+    if (st.rolling) spin(dlg.querySelectorAll('.dice.rolling .die'), 20, DICE_MS, () => { st.rolling = false; draw(); });
+    if (st.dmgRolling) spin(dlg.querySelectorAll('.dmg.rolling b'), Math.max(st.dmg.max || 0, st.dmg.total, 2), DMG_MS, () => { st.dmgRolling = false; draw(); });
   };
   const roll = () => {
     st.res = R.rollD20(target, st.boons, st.banes);
@@ -1364,12 +1389,14 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
     if (st.res.dragon && weapon) st.msg += ' Coup critique : effet bonus au choix.';
     if (st.res.demon && skill?.kind === 'magie') st.msg += ' Incident magique !';
     onResult?.(st.res, st);
+    st.rolling = true;
   };
   dlg.onclick = (e) => {
     const b = e.target.closest('[data-r]');
     if (!b) return;
     const k = b.dataset.r;
     if (k === 'close') { dlg.close(); render(); return; }
+    if (st.rolling || st.dmgRolling) return;
     if (k === 'boon' || k === 'bane') {
       // Jet unique déjà compté (jet de mort) : on ne change plus rien
       if (once && st.res) return;
@@ -1391,7 +1418,7 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
         if (c.wp.cur < o.wp) { toast('Pas assez de points de volonté'); return; }
         c.wp.cur -= o.wp; commit(false);
       }
-      st.dmg = R.rollExpr(o.expr);
+      st.dmg = R.rollExpr(o.expr); st.dmgRolling = true;
       st.msg = o.name ? `${esc(o.name)} : −${o.wp} PVol (il t’en reste ${c.wp.cur}).` : '';
     }
     if (k === 'next') { next.onClick(); return; }
@@ -1405,8 +1432,16 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
 function freeRoll(expr) {
   const go = (e) => {
     const r = R.rollExpr(e);
-    openDialog({ title: e.toUpperCase(), body: `<div class="dmg big"><b>${r.total}</b><small>${esc(r.detail)}</small></div>`,
-      actions: [closeBtn, { label: 'Relancer', primary: true, onClick: () => { go(e); return false; } }] });
+    openDialog({ title: e.toUpperCase(), body: `<div class="dmg big rolling"><b>?</b><small>Les dés roulent…</small></div>`,
+      actions: [closeBtn, { label: 'Relancer', primary: true, onClick: () => { go(e); return false; } }],
+      onOpen: (f) => {
+        const box = f.querySelector('.dmg'); const relaunch = f.querySelector('.dlg-actions [type=submit]');
+        if (relaunch) relaunch.disabled = true;
+        spin([box.querySelector('b')], Math.max(r.max || 0, r.total, 2), DMG_MS, () => {
+          box.classList.remove('rolling'); box.querySelector('b').textContent = r.total; box.querySelector('small').textContent = r.detail;
+          if (relaunch) relaunch.disabled = false;
+        });
+      } });
   };
   if (expr) return go(expr);
   openDialog({ title: 'Lancer des dés', body: `<div class="fields">${F.text('e', 'Expression', '2D6', 'full', 'autofocus placeholder="ex. 2D6+D4"')}</div>`,

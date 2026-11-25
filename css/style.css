@@ -616,3 +616,11 @@ nav.tabs button span { white-space: nowrap; }
 .dice.idle.boon .die { color: #1f6b5c; }
 .dice.idle.bane .die { color: var(--red-dk); }
 .dice-count.bane { color: var(--red); font-weight: 600; }
+/* Suspense : dés qui roulent avant le résultat */
+@keyframes rattle { 0% { transform: rotate(-14deg) translateY(0); } 25% { transform: rotate(10deg) translateY(-6px); } 50% { transform: rotate(-8deg) translateY(2px); } 75% { transform: rotate(14deg) translateY(-4px); } 100% { transform: rotate(-14deg) translateY(0); } }
+.dice.rolling .die { animation: rattle .32s linear infinite; }
+.dice.rolling .die:nth-child(2) { animation-duration: .29s; animation-direction: reverse; }
+.dice.rolling .die:nth-child(3) { animation-duration: .35s; }
+.verdict.wait { color: var(--ink-soft); opacity: .6; letter-spacing: 6px; }
+.dmg.rolling b { display: inline-block; animation: rattle .3s linear infinite; color: var(--ink-soft); }
+@media (prefers-reduced-motion: reduce) { .dice.rolling .die, .dmg.rolling b { animation: none; } }
