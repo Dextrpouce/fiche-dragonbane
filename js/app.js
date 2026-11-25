@@ -481,10 +481,10 @@ function viewCombat(c) {
       ${(() => {
         // Avec ses propres dés : le résultat se note directement à côté des cases
         const open = c.death.fail < 3 && c.death.succ < 3;
-        const btn = (r, label, cls = '') => (open ? `<button class="btn small dd-btn ${cls}" data-act="deathReal" data-r="${r}">${label}</button>` : '');
+        const btn = (r, label, cls = '', name = '') => (open ? `<button class="btn small dd-btn ${cls}" data-act="deathReal" data-r="${r}" title="${name}" aria-label="${name}">${label}</button>` : '');
         return `<div class="death-grid">
-          <span class="death-lbl">Réussites</span><span class="death-pips">${[0, 1, 2].map((i) => `<i class="pip ok ${i < c.death.succ ? 'on' : ''}"></i>`).join('')}</span>${btn('ok', '✓ Réussite', 'dd-ok')}${btn('dragon', `${ddIcon('dragon')} Dragon (1)`, 'dd-dragon')}
-          <span class="death-lbl">Échecs</span><span class="death-pips">${[0, 1, 2].map((i) => `<i class="pip ko ${i < c.death.fail ? 'on' : ''}"></i>`).join('')}</span>${btn('ko', '✗ Échec', 'dd-ko')}${btn('demon', `${ddIcon('demon')} Démon (20)`, 'dd-demon')}
+          <span class="death-lbl">Réussites</span><span class="death-pips">${[0, 1, 2].map((i) => `<i class="pip ok ${i < c.death.succ ? 'on' : ''}"></i>`).join('')}</span>${btn('ok', '✓<span class="dd-txt"> Réussite</span>', 'dd-ok', 'Réussite')}${btn('dragon', `${ddIcon('dragon')}<span class="dd-txt"> Dragon (1)</span>`, 'dd-dragon', 'Dragon (1)')}
+          <span class="death-lbl">Échecs</span><span class="death-pips">${[0, 1, 2].map((i) => `<i class="pip ko ${i < c.death.fail ? 'on' : ''}"></i>`).join('')}</span>${btn('ko', '✗<span class="dd-txt"> Échec</span>', 'dd-ko', 'Échec')}${btn('demon', `${ddIcon('demon')}<span class="dd-txt"> Démon (20)</span>`, 'dd-demon', 'Démon (20)')}
         </div>`;
       })()}
       ${c.death.fail >= 3 ? '<p class="verdict demon">Ton personnage est mort.</p>' : c.death.succ >= 3 ? '<p class="verdict dragon">Hors de danger.</p>' : ''}

@@ -862,3 +862,15 @@ body.no-scroll { overflow: hidden; }
 .real-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 8px 0; }
 .die-pick { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 10px 0; }
 .die-pick .btn { min-width: 48px; justify-content: center; }
+@media (max-width: 600px) {
+  .death-grid .dd-txt { display: none; }
+  .death-grid .dd-btn { min-width: 46px; justify-content: center; font-size: 1.05rem; }
+  .death-lbl { min-width: 0; }
+  .death-grid { gap: 6px 8px; }
+}
+@media (max-width: 420px) {
+  .coins { gap: 4px; }
+  .coin .step button { width: 26px; }
+  .coin .step input { width: 36px; }
+  .coins > .coin { min-width: 0; }
+}
