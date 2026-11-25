@@ -1,4 +1,4 @@
-﻿// Service worker : garde l'appli en cache pour qu'elle fonctionne sans internet.
+// Service worker : garde l'appli en cache pour qu'elle fonctionne sans internet.
 const VERSION = 'v19';
 const CACHE = `dragonbane-${VERSION}`;
 const SHELL = [
@@ -18,15 +18,15 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  // Polices et bibliothÃ¨que Firebase : mises en cache pour le hors-ligne.
-  // Tout le reste venant d'ailleurs (connexion Google, base de donnÃ©es) passe directement.
+  // Polices et bibliothèque Firebase : mises en cache pour le hors-ligne.
+  // Tout le reste venant d'ailleurs (connexion Google, base de données) passe directement.
   const cacheable = url.origin === location.origin
     || url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com'
     || (url.hostname === 'www.gstatic.com' && url.pathname.startsWith('/firebasejs/'));
   if (!cacheable) return;
 
-  // Fichiers de l'appli : rÃ©seau d'abord (toujours la derniÃ¨re version), cache si pas de rÃ©seau (ou rÃ©seau trop lent).
-  // Polices et Firebase (versions figÃ©es) : cache d'abord.
+  // Fichiers de l'appli : réseau d'abord (toujours la dernière version), cache si pas de réseau (ou réseau trop lent).
+  // Polices et Firebase (versions figées) : cache d'abord.
   e.respondWith(caches.open(CACHE).then(async (cache) => {
     const sameOrigin = url.origin === location.origin;
     const cached = await cache.match(e.request, { ignoreSearch: sameOrigin });
