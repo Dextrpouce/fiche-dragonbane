@@ -61,7 +61,7 @@ export const MANUAL = [
       <li><b>À vendre</b> : la liste de ce qu’on ne garde pas et son total. « Vendu » verse le prix dans la caisse.</li>
     </ul>`],
   ['Biblio', `
-    <p>Pour consulter : armes, armures, matériel, sorts, tours et capacités. Choisis une rubrique ou tape un mot dans la recherche, puis touche une ligne pour voir le détail.</p>
+    <p>Pour consulter : armes, armures, matériel, sorts, tours, capacités et <b>règles</b> (rappels pour le combat : initiative, parer, esquiver, attaques spéciales, Dragon et Démon, 0 PV, états, peur, poison…). Choisis une rubrique ou tape un mot dans la recherche, puis touche une ligne pour voir le détail.</p>
     <p>Les noms sont des traductions libres et les effets sont résumés : le livre fait foi.</p>`],
   ['Sauvegarde et appareils', `
     <p>Tout est enregistré sur l’appareil : l’appli marche <b>sans internet</b>.</p>

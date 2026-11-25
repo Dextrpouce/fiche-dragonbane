@@ -597,3 +597,7 @@ nav.tabs button span { white-space: nowrap; }
 .acct-bar.full i { background: linear-gradient(90deg, #4f7a3a, #6f9d4f); }
 .fortune { margin: 10px 0 0; font-size: 16px; }
 .fortune small { font-size: 12px; }
+/* Biblio : rappels de règles */
+.rule p { margin: 4px 0; }
+.rule ul, .rule ol { margin: 4px 0 6px; padding-left: 20px; }
+.rule li { margin: 2px 0; }
