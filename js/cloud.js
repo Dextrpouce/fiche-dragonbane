@@ -166,7 +166,7 @@ export function watchGroup(id, onData, onError) {
   return fb.onSnapshot(groupDoc(id), (snap) => {
     if (!snap.exists()) { onError?.(new Error('Groupe introuvable')); return; }
     const d = snap.data();
-    onData({ id, name: d.name, members: d.memberNames || {}, state: JSON.parse(d.json || '{}'), updatedAt: d.updatedAt || 0 });
+    onData({ id, name: d.name, members: d.memberNames || {}, mj: d.mj || '', mjName: d.mjName || '', state: JSON.parse(d.json || '{}'), updatedAt: d.updatedAt || 0 });
   }, (e) => onError?.(e));
 }
 
@@ -212,6 +212,37 @@ export function watchPerso(g, id, onData, onGone) {
   return fb.onSnapshot(persoDoc(g, id), (snap) => { if (snap.exists()) onData(JSON.parse(snap.data().json)); else onGone?.(); }, () => {});
 }
 export async function deletePerso(g, id) { who(); await fb.deleteDoc(persoDoc(g, id)); }
+
+// ----- Meneur de jeu : un compte désigné dans le groupe (champs « mj » et « mjName » du document du groupe) -----
+export const uid = () => user()?.uid || '';
+export async function setGroupMJ(g, mjUid, mjName) {
+  who();
+  await fb.updateDoc(groupDoc(g), { mj: mjUid || '', mjName: mjName || '' });
+}
+// Fiches complètes (notes secrètes, journal perso…) pour le MJ : groups/{code}/mj/{uid joueur}/persos|media/{id}
+// Règle Firestore : chaque joueur écrit dans son dossier ; seuls lui et le MJ du groupe peuvent le lire.
+const mjCol = (g, owner, kind) => fb.collection(db, 'groups', g, 'mj', owner, kind);
+export async function putMJPerso(g, c) {
+  const u = who();
+  await fb.setDoc(fb.doc(mjCol(g, u.uid, 'persos'), c.id), { json: JSON.stringify(c), name: c.name || '', updatedAt: c.updatedAt || Date.now() });
+}
+export async function deleteMJPerso(g, cid) { const u = who(); await fb.deleteDoc(fb.doc(mjCol(g, u.uid, 'persos'), cid)); }
+export async function putMJMedia(g, m) {
+  const u = who();
+  await fb.setDoc(fb.doc(mjCol(g, u.uid, 'media'), m.id), { json: JSON.stringify(m), updatedAt: m.updatedAt || Date.now() });
+}
+export async function getMJMedia(g, owner, id) {
+  who();
+  const snap = await fb.getDoc(fb.doc(mjCol(g, owner, 'media'), id));
+  return snap.exists() ? JSON.parse(snap.data().json) : null;
+}
+// MJ : suit en direct les fiches d'un joueur ; onData(liste de personnages)
+export function watchMJPersos(g, owner, onData, onError) {
+  return fb.onSnapshot(mjCol(g, owner, 'persos'), (snap) => {
+    const list = []; snap.forEach((d) => { try { list.push(JSON.parse(d.data().json)); } catch { /* fiche illisible */ } });
+    onData(list);
+  }, (e) => onError?.(e));
+}
 
 export async function leaveGroup(id) {
   const u = who();

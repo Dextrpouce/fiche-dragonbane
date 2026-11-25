@@ -75,6 +75,10 @@ export const MANUAL = [
   ['Biblio', `
     <p>Pour consulter : armes, armures, matériel, sorts, tours, capacités et <b>règles</b> (rappels pour le combat : initiative, parer, esquiver, attaques spéciales, Dragon et Démon, 0 PV, états, peur, poison… et pour la magie : PVol et niveau de puissance, sorts préparés, grimoire, métal, incidents magiques, apprendre un sort). Choisis une rubrique ou tape un mot dans la recherche, puis touche une ligne pour voir le détail.</p>
     <p>Les noms sont des traductions libres et les effets sont résumés : le livre fait foi.</p>`],
+  ['Meneur de jeu', `
+    <p>Dans un groupe partagé, le MJ (connecté) touche <b>« 👑 Je suis le MJ »</b> dans la carte du groupe (onglet Groupe). Son compte devient le MJ ; lui seul peut ensuite « Ne plus être MJ ».</p>
+    <p>Le MJ a un onglet <b>MJ</b> : toutes les fiches des joueurs, en direct (PV, PVol, états, armure, armes, compétences utiles, jets de mort). « 🔒 Notes privées » montre les notes secrètes, le carnet et le journal perso ; « Fiche complète » ouvre la fiche entière en lecture seule.</p>
+    <p>Joueurs : dès qu’un MJ est désigné, vos fiches complètes lui sont envoyées automatiquement (notes secrètes et journal perso compris) ; la carte du groupe le rappelle. Les autres joueurs, eux, ne les voient jamais.</p>`],
   ['Joueur absent', `
     <p>Un joueur ne pourra pas venir ? Avant la séance, il ouvre <b>Mes personnages</b> (touche son nom en haut) et coche <b>« Prêter au groupe »</b>. Il faut un groupe partagé et être connecté.</p>
     <p>Le jour de la séance, un autre joueur ouvre <b>Mes personnages</b> › « Personnages prêtés par le groupe » › <b>Jouer</b>. Un bandeau 🎭 rappelle qu’il joue à sa place : seul le mode <b>Jeu</b> est possible (ni mode libre, ni progression). Jets, PV, PVol, états, objets utilisés : tout est enregistré sur la fiche du joueur absent. « Rendre » revient à ton personnage.</p>

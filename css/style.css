@@ -789,3 +789,26 @@ body.no-scroll { overflow: hidden; }
 .char-row > button { flex: 1; min-width: 0; }
 .lend-check { flex: none; font-size: 12px; white-space: nowrap; }
 .menu-list [data-guest] .btn { margin-left: auto; pointer-events: none; }
+/* Meneur de jeu */
+.mj-share { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.mj-share .btn { margin-left: auto; }
+.mj-banner { background: linear-gradient(90deg, #5c4316, #3d2c0e); color: #fff1cf; }
+.mj-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.mj-card { padding: 12px; }
+.mj-card.down { border: 2px solid var(--red); }
+.mj-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.mj-name { display: flex; flex-direction: column; min-width: 0; }
+.mj-name b { font-family: var(--font-title); font-weight: 400; font-size: 20px; color: var(--red); }
+.mj-name small { color: var(--ink-soft); }
+.mj-pools { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 8px; align-items: end; }
+.mj-pools > div { display: flex; flex-direction: column; gap: 2px; }
+.mj-pools span { font-size: 11px; color: var(--ink-soft); font-family: var(--font-title); }
+.mj-pools b { font-size: 20px; font-weight: 400; font-family: var(--font-title); }
+.mj-pools small { font-size: 12px; color: var(--ink-soft); }
+.mj-pools .vbar { display: block; height: 6px; border-radius: 999px; background: rgba(60, 40, 22, .15); overflow: hidden; }
+.mj-pools .vbar i { display: block; height: 100%; background: var(--red); }
+.mj-pools .vbar.wp i { background: var(--teal); }
+.mj-conds { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 4px; }
+.mj-line { margin: 4px 0; }
+.mj-note { border-left: 3px solid rgba(91, 74, 120, .5); padding: 2px 0 2px 10px; margin: 6px 0; }
+.mj-note p { margin: 2px 0 0; }

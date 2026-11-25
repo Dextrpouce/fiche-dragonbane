@@ -82,6 +82,22 @@ Si tu modifies le même personnage sur deux appareils sans réseau, c'est la ver
 
 Les noms français (compétences, états, capacités) sont des traductions libres et se modifient dans l'appli.
 
+## Meneur de jeu
+
+Dans un groupe partagé, un membre connecté touche **« 👑 Je suis le MJ »** (onglet Groupe) : son compte devient le MJ du groupe (champ `mj` du document `groups/{code}`) ; lui seul peut ensuite céder sa place. Chaque joueur envoie alors automatiquement ses fiches **complètes** (notes secrètes, journal perso, PNJ, lieux et leurs images) dans `groups/{code}/mj/{son uid}/…`, et le MJ dispose d'un onglet **MJ** : tableau en direct de tous les personnages, notes privées, et fiche complète en lecture seule. Les joueurs sont prévenus dans la carte du groupe.
+
+Règle Firestore à ajouter (à côté de la règle « media ») pour que **seuls le joueur et le MJ** puissent lire ces fiches :
+
+```
+// Fiches complètes envoyées au MJ : chaque joueur écrit dans son dossier ; lecture par lui et le MJ du groupe
+match /groups/{id}/mj/{uid}/{doc=**} {
+  allow write: if request.auth != null && request.auth.uid == uid
+    && request.auth.uid in get(/databases/$(database)/documents/groups/$(id)).data.members;
+  allow read: if request.auth != null && (request.auth.uid == uid
+    || get(/databases/$(database)/documents/groups/$(id)).data.mj == request.auth.uid);
+}
+```
+
 ## Joueur absent
 
 Un joueur peut **prêter** son personnage au groupe partagé (« Mes personnages » › « Prêter au groupe ») : une copie de sa fiche de jeu, sans notes secrètes, journal perso, PNJ ni lieux, est rangée dans `groups/{code}/media/perso_{id}` (même règle Firestore que les croquis). Les autres membres peuvent la jouer en **mode Jeu uniquement** ; leurs modifications sont reprises par la fiche du propriétaire dès que son appli la voit (la plus récente l'emporte, ses données privées sont conservées).

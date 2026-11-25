@@ -15,7 +15,7 @@ const $app = document.getElementById('app');
 const dlg = document.getElementById('dlg');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 // Personnage affiché : le tien, ou celui d'un joueur absent que tu joues (ui.guest, voir « Personnages prêtés »)
-const C = () => ui.guest || store.current();
+const C = () => ui.mjView || ui.guest || store.current();
 const num = (v) => (v === '' || v == null || isNaN(+v) ? 0 : +v);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const fmtDate = (t) => new Date(t).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' });
@@ -44,6 +44,7 @@ const ICONS = {
   expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   history: '<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3 4v4h4"/><path d="M12 7.5V12l3 2"/>',
+  crown: '<path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z"/><path d="M5 16h14"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   check: '<path d="M5 12l5 5L20 7"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>',
@@ -70,7 +71,8 @@ function toast(msg) {
 
 function commit(rerender = true) {
   C().updatedAt = Date.now();
-  if (ui.guest) pushGuest(); else { store.save(); pushLent(C()); }
+  if (ui.mjView) return void (rerender && render()); // fiche d'un joueur vue par le MJ : lecture seule
+  if (ui.guest) pushGuest(); else { store.save(); pushLent(C()); pushMJ(C()); }
   if (rerender) render();
 }
 
@@ -251,18 +253,20 @@ function render() {
   const c = C();
   if (!c) { renderWelcome(); return; }
   if (ui.tab === 'magie' && !R.isCaster(c)) ui.tab = 'fiche';
-  if (ui.guest && ui.mode !== 'normal') ui.mode = 'normal'; // personnage prêté : ni mode libre ni progression
-  watchLent();
+  if ((ui.guest || ui.mjView) && ui.mode !== 'normal') ui.mode = 'normal'; // personnage prêté ou vu par le MJ : ni mode libre ni progression
+  if (ui.tab === 'mj' && !isMJ()) ui.tab = 'fiche';
+  watchLent(); mjSync(); mjWatch();
   const y = window.scrollY;
   const marked = c.skills.filter((s) => s.mark).length;
   $app.innerHTML = `<div class="shell mode-${ui.mode}">
     ${topbar(c)}
+    ${ui.mjView ? `<div class="banner guest-banner mj-banner">👑<span>Fiche de <b>${esc(ui.mjView.name)}</b> (${esc(ui.mjViewPlayer || 'joueur')}) — lecture seule : rien n’est enregistré.</span><button class="btn small ghost-dark" data-act="mjClose">Retour au MJ</button></div>` : ''}
     ${ui.guest ? `<div class="banner guest-banner">🎭<span>Tu joues <b>${esc(ui.guest.name)}</b> à la place de ${esc(ui.guestOwner || 'son joueur')} — mode Jeu uniquement, tout est enregistré sur sa fiche.</span><button class="btn small ghost-dark" data-act="guestEnd">Rendre</button></div>` : ''}
     ${isFree() ? `<div class="banner free-banner">${icon('edit')}<span><b>Mode libre</b> — touche une valeur pour la changer, sans jet ni contrainte.</span><button class="btn small ghost-dark" data-act="setMode" data-m="normal">Terminer</button></div>` : ''}
     ${isProg() ? `<div class="banner prog-banner">${icon('star')}<span><b>Progression</b> — ${marked} compétence${marked > 1 ? 's' : ''} cochée${marked > 1 ? 's' : ''}${c.pendingMarks ? `, <b>${c.pendingMarks}</b> coche${c.pendingMarks > 1 ? 's' : ''} de fin de séance à placer` : ''}. Touche une compétence pour la cocher.</span>
       <button class="btn small gold" data-act="advanceRolls" ${marked ? '' : 'disabled'}>${icon('d20')} Jets d’amélioration</button></div>` : ''}
     <main>${VIEWS[ui.tab](c)}</main>
-    <nav class="tabs">${TABS.filter(([k]) => k !== 'magie' || R.isCaster(c)).map(([k, l, i]) => `<button class="${ui.tab === k ? 'active' : ''}" data-act="tab" data-tab="${k}">${icon(i)}<span>${l}</span></button>`).join('')}</nav>
+    <nav class="tabs">${[...TABS, ...(isMJ() && !ui.mjView ? [['mj', 'MJ', 'crown']] : [])].filter(([k]) => k !== 'magie' || R.isCaster(c)).map(([k, l, i]) => `<button class="${ui.tab === k ? 'active' : ''}" data-act="tab" data-tab="${k}">${icon(i)}<span>${l}</span></button>`).join('')}</nav>
   </div>`;
   window.scrollTo(0, y);
   if (ui.tab === 'biblio' && ui.libSearch) filterLib();
@@ -615,6 +619,12 @@ function shareCard() {
       <button class="btn small ghost" data-act="gShareCode">${icon('users')} Inviter</button></div>
     ${members.length ? `<p class="small muted">Membres : ${members.map(esc).join(', ')}</p>` : ''}
     ${status}
+    <div class="mj-share">
+      ${!sh.mj ? `<span class="small">Pas encore de meneur de jeu.</span><button class="btn small ghost" data-act="mjClaim">👑 Je suis le MJ</button>`
+        : isMJ() ? `<span class="small">👑 <b>Tu es le MJ</b> : tu vois toutes les fiches (onglet MJ).</span><button class="btn small ghost" data-act="mjLeave">Ne plus être MJ</button>`
+        : `<span class="small">👑 MJ : <b>${esc(sh.mjName || '?')}</b>. Il voit vos fiches complètes, notes secrètes et journal perso compris.</span>`}
+      ${mjError ? `<p class="small bad">${esc(mjError)}</p>` : ''}
+    </div>
   </section>`;
 }
 
@@ -1306,6 +1316,115 @@ function viewCarnet(c) {
   </div>`;
 }
 
+// ---------- Meneur de jeu ----------
+// Le MJ est un compte désigné dans le groupe partagé (champ « mj » du document du groupe).
+// Chaque joueur envoie automatiquement ses fiches COMPLÈTES (notes secrètes, journal perso, PNJ, lieux, croquis)
+// dans groups/{code}/mj/{son uid}/… ; la règle Firestore réserve leur lecture au joueur lui-même et au MJ.
+const isMJ = () => !!(group.shared?.mj && cloud.uid() === group.shared.mj);
+const mjSent = new Map();    // id → updatedAt déjà envoyé au MJ
+let mjTimer = null; let mjError = ''; let mjFullKey = '';
+const mjErrText = (e) => (e?.code === 'permission-denied' ? 'Envoi au MJ refusé par Firebase : ajoute la règle « mj » (voir le manuel)' : e?.message || 'Erreur');
+// Images et croquis de mon journal perso (fiche) référencés par un personnage
+const mjMediaIds = (c) => [...(c.journal || []).map((s) => s.sketch), ...(c.npcs || []).map((n) => n.photo), ...(c.lieux || []).map((l) => l.photo)].filter(Boolean);
+async function mjSend(c) {
+  const g = group.shared?.id;
+  if (!g || !group.shared.mj || !cloud.user() || !c) return;
+  try {
+    if (mjSent.get(c.id) !== c.updatedAt) { await cloud.putMJPerso(g, c); mjSent.set(c.id, c.updatedAt); }
+    for (const id of mjMediaIds(c)) {
+      const m = store.sketch(id);
+      if (m && mjSent.get(id) !== m.updatedAt) { await cloud.putMJMedia(g, m); mjSent.set(id, m.updatedAt); }
+    }
+    mjError = '';
+  } catch (e) { mjError = mjErrText(e); }
+}
+function pushMJ(c) { clearTimeout(mjTimer); mjTimer = setTimeout(() => mjSend(c), 3000); }
+// Une fois par session (et à chaque changement de groupe ou de MJ) : toutes mes fiches
+function mjSync() {
+  const key = group.shared?.mj && cloud.user() ? `${group.shared.id}/${group.shared.mj}/${cloud.uid()}` : '';
+  if (!key || key === mjFullKey) return;
+  mjFullKey = key;
+  (async () => { for (const c of store.list()) await mjSend(c); })();
+}
+
+// ----- Côté MJ : suivi en direct des fiches de chaque joueur -----
+const mjData = {};             // uid du joueur → personnages
+const mjWatches = new Map();   // uid → arrêt du suivi
+let mjErr = '';
+function mjWatch() {
+  if (!isMJ()) { mjWatches.forEach((stop) => stop()); mjWatches.clear(); return; }
+  const g = group.shared.id;
+  for (const owner of Object.keys(group.shared.members || {})) {
+    if (mjWatches.has(owner)) continue;
+    mjWatches.set(owner, cloud.watchMJPersos(g, owner, (list) => {
+      mjData[owner] = list; mjErr = '';
+      if (ui.mjView) { const fresh = list.find((x) => x.id === ui.mjView.id); if (fresh) ui.mjView = R.upgradeCharacter(fresh); }
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+      if (['mj'].includes(ui.tab) && !typing && !dlg.open) render();
+    }, (e) => { mjErr = e?.code === 'permission-denied' ? 'Lecture refusée par Firebase : ajoute la règle « mj » (voir le manuel)' : e.message; if (ui.tab === 'mj') render(); }));
+  }
+}
+const MJ_SKILLS = ['vigilance', 'esquive', 'discretion', 'fouille', 'persuasion', 'bluff', 'soins'];
+function mjCard(ch, player, owner) {
+  const hpMax = R.maxHP(ch); const wpMax = R.maxWP(ch);
+  const conds = R.ATTRS.filter((a) => ch.conditions?.[a.key]);
+  const bar = (cur, max, cls) => `<span class="vbar ${cls}"><i style="width:${max ? clamp(cur / max * 100, 0, 100) : 0}%"></i></span>`;
+  const skills = MJ_SKILLS.map((id) => ch.skills.find((s) => s.id === id)).filter(Boolean);
+  const weapons = (ch.weapons || []).filter((w) => w.name);
+  return `<article class="card mj-card ${ch.hp.cur <= 0 ? 'down' : ''}">
+    <div class="mj-head">
+      ${ch.portrait ? `<span class="crest photo" style="background-image:url('${ch.portrait}')"></span>` : `<span class="crest">${esc((ch.name || '?').charAt(0).toUpperCase())}</span>`}
+      <span class="mj-name"><b>${esc(ch.name || 'Sans nom')}</b><small>${esc([R.kinName(ch), R.profName(ch)].filter(Boolean).join(' · '))} · joueur : ${esc(player)}</small></span>
+    </div>
+    <div class="mj-pools">
+      <div><span>PV</span><b class="${ch.hp.cur <= 0 ? 'bad' : ''}">${ch.hp.cur}<small>/${hpMax}</small></b>${bar(ch.hp.cur, hpMax, 'hp')}</div>
+      <div><span>PVol</span><b>${ch.wp.cur}<small>/${wpMax}</small></b>${bar(ch.wp.cur, wpMax, 'wp')}</div>
+      <div><span>Armure</span><b>${R.armorTotal(ch)}</b></div>
+      <div><span>Dépl.</span><b>${R.movement(ch)}</b></div>
+    </div>
+    ${ch.hp.cur <= 0 ? `<p class="small bad">À 0 PV — jets de mort : ${ch.death?.succ || 0} réussite(s), ${ch.death?.fail || 0} échec(s)</p>` : ''}
+    <div class="mj-conds">${ch.music ? '<span class="cond-pill music">♪ Barde</span>' : ''}${conds.map((a) => `<span class="cond-pill">${a.cond}</span>`).join('') || '<span class="small muted">Aucun état</span>'}</div>
+    ${weapons.length ? `<p class="small mj-line"><b>Armes</b> ${weapons.map((w) => `${esc(w.name)} (${esc(w.damage || '')})`).join(' · ')}</p>` : ''}
+    <p class="small mj-line"><b>Compétences</b> ${skills.map((s) => `${esc(s.name)} ${s.value}`).join(' · ')}</p>
+    <div class="add-row"><button class="btn small" data-act="mjOpen" data-u="${owner}" data-id="${ch.id}">${icon('book')} Fiche complète</button><button class="btn small ghost" data-act="mjPrivate" data-u="${owner}" data-id="${ch.id}">🔒 Notes privées</button></div>
+  </article>`;
+}
+function viewMJ() {
+  if (!isMJ()) return '<section class="card"><h2>Meneur de jeu</h2><p>Réservé au MJ du groupe.</p></section>';
+  const sh = group.shared; const members = sh.members || {};
+  const cards = Object.entries(members).flatMap(([owner, name]) => (mjData[owner] || []).map((ch) => mjCard(ch, name, owner))).join('');
+  const waiting = Object.entries(members).filter(([owner]) => owner !== cloud.uid() && !(mjData[owner] || []).length).map(([, name]) => name);
+  return `<div class="grid mj">
+    <section class="card span-all">
+      <h2>Meneur de jeu</h2>
+      <p class="small muted">Toutes les fiches du groupe « ${esc(sh.name)} », mises à jour en direct, notes privées comprises. Touche « Fiche complète » pour tout voir (lecture seule).</p>
+      ${mjErr ? `<p class="small bad">${esc(mjErr)}</p>` : ''}
+      ${waiting.length ? `<p class="small">En attente des fiches de : ${waiting.map(esc).join(', ')} (elles arrivent quand chacun ouvre l’appli, connecté).</p>` : ''}
+    </section>
+    <div class="mj-grid span-all">${cards || '<p class="empty">Aucune fiche reçue pour l’instant.</p>'}</div>
+  </div>`;
+}
+const mjChar = (owner, id) => (mjData[owner] || []).find((x) => x.id === id);
+// Notes privées d'un personnage : notes secrètes, journal perso, carnet
+function mjPrivateDialog(owner, id) {
+  const ch = mjChar(owner, id); if (!ch) return;
+  const gj = group.state; const sec = ch.secret || {};
+  const line = (label, text) => (text ? `<div class="mj-note"><b>${label}</b><p class="small pre">${esc(text)}</p></div>` : '');
+  const secS = Object.entries(sec.s || {}).filter(([, t]) => t).map(([sid, t]) => { const s = gj.journal?.find((x) => x.id === sid); return line(`Session ${s ? `${s.n}${s.title ? ` « ${esc(s.title)} »` : ''}` : '(supprimée)'}`, t); }).join('');
+  const secN = Object.entries(sec.n || {}).filter(([, t]) => t).map(([nid, t]) => line(`PNJ ${esc(gj.npcs?.find((x) => x.id === nid)?.name || '?')}`, t)).join('');
+  const secL = Object.entries(sec.l || {}).filter(([, t]) => t).map(([pid, t]) => line(`Lieu ${esc(gj.lieux?.find((x) => x.id === pid)?.name || '?')}`, t)).join('');
+  const perso = (ch.journal || []).map((s) => line(`Session ${s.n}${s.title ? ` « ${esc(s.title)} »` : ''} (${fmtDay(s.date)})`, [s.summary, s.loot && `Butin : ${s.loot}`, (s.todos || []).filter((t) => !t.done).map((t) => `☐ ${t.t}`).join('\n')].filter(Boolean).join('\n'))).join('');
+  openDialog({
+    title: `${ch.name} — notes privées`,
+    cls: 'history',
+    body: `<h3>🔒 Notes secrètes</h3>${secS + secN + secL || '<p class="small muted">Aucune.</p>'}
+      <h3>Carnet</h3>${line('Faiblesse', ch.weakness) + line('Notes', ch.notes) + line('Compagnons et relations', ch.companions) || '<p class="small muted">Rien.</p>'}
+      <h3>Journal personnel</h3>${perso || '<p class="small muted">Aucune session.</p>'}
+      ${(ch.npcs || []).length || (ch.lieux || []).length ? `<p class="small">PNJ perso : ${(ch.npcs || []).map((n) => esc(n.name)).join(', ') || '—'} · Lieux perso : ${(ch.lieux || []).map((l) => esc(l.name)).join(', ') || '—'}</p>` : ''}`,
+    actions: [closeBtn],
+  });
+}
+
 // ----- Personnages prêtés au groupe : jouer le personnage d'un joueur absent -----
 // Le joueur coche « Prêter au groupe » : une copie de sa fiche de jeu (sans notes secrètes, journal perso,
 // PNJ ni lieux) va dans groups/{code}/media/perso_{id}, tenue à jour à chaque modification.
@@ -1845,7 +1964,7 @@ media.setOnArrive(() => {
   if (ui.tab === 'journal' && C() && !typing && !dlg.open && !document.querySelector('.sketch.full')) render();
 });
 
-const VIEWS = { fiche: viewFiche, combat: viewCombat, magie: viewMagie, sac: viewSac, prog: viewProg, carnet: viewCarnet, journal: viewJournal, groupe: viewGroupe, biblio: viewBiblio };
+const VIEWS = { mj: viewMJ, fiche: viewFiche, combat: viewCombat, magie: viewMagie, sac: viewSac, prog: viewProg, carnet: viewCarnet, journal: viewJournal, groupe: viewGroupe, biblio: viewBiblio };
 
 // ================= Lanceur de dés =================
 // Jet de D20 sous une valeur : avantages/désavantages, Dragon (1), Démon (20), forcer le jet.
@@ -2443,10 +2562,32 @@ function editSkill(s) {
 const A = {
   tab(el) { ui.tab = el.dataset.tab; localStorage.setItem('dragonbane.tab', ui.tab); render(); window.scrollTo(0, 0); },
   skillFilter(el) { ui.skillFilter = el.dataset.f; localStorage.setItem('dragonbane.skillFilter', ui.skillFilter); render(); },
-  setMode(el) { if (ui.guest && el.dataset.m !== 'normal') { toast('Personnage prêté : mode Jeu uniquement'); return; } ui.mode = el.dataset.m; render(); },
+  setMode(el) { if ((ui.guest || ui.mjView) && el.dataset.m !== 'normal') { toast('Personnage prêté : mode Jeu uniquement'); return; } ui.mode = el.dataset.m; render(); },
   guestEnd() { guestEnd(); },
+  mjOpen(el) {
+    const ch = mjChar(el.dataset.u, el.dataset.id); if (!ch) return;
+    ui.mjView = R.upgradeCharacter(JSON.parse(JSON.stringify(ch))); ui.mjViewPlayer = group.shared?.members?.[el.dataset.u] || '';
+    ui.mjBackTab = 'mj'; ui.tab = 'fiche'; render(); window.scrollTo(0, 0);
+  },
+  mjClose() { ui.mjView = null; ui.tab = 'mj'; render(); window.scrollTo(0, 0); },
+  mjPrivate(el) { mjPrivateDialog(el.dataset.u, el.dataset.id); },
+  // Devenir MJ du groupe (ou céder la place)
+  async mjClaim() {
+    const sh = group.shared; if (!sh) return;
+    if (!cloud.user()) { toast('Connecte-toi d’abord (le nuage en haut)'); return; }
+    if (sh.mj && sh.mj !== cloud.uid()) { toast(`${sh.mjName || 'Quelqu’un'} est déjà le MJ : seul lui peut céder sa place`); return; }
+    confirmDialog('Devenir MJ', `Tu seras le meneur de jeu du groupe « ${esc(sh.name)} » : tu verras toutes les fiches des joueurs, <b>notes secrètes et journaux perso compris</b>. Les joueurs en sont prévenus.`, 'Je suis le MJ', async () => {
+      try { await cloud.setGroupMJ(sh.id, cloud.uid(), ownerName()); toast('Tu es le MJ du groupe'); } catch (e) { toast(e.message); }
+    });
+  },
+  async mjLeave() {
+    const sh = group.shared; if (!sh || !isMJ()) return;
+    confirmDialog('Ne plus être MJ', 'Tu ne verras plus les fiches des joueurs. Un autre membre pourra devenir MJ.', 'Ne plus être MJ', async () => {
+      try { await cloud.setGroupMJ(sh.id, '', ''); ui.mjView = null; if (ui.tab === 'mj') ui.tab = 'fiche'; toast('Tu n’es plus le MJ'); } catch (e) { toast(e.message); }
+    });
+  },
   modeMenu() {
-    if (ui.guest) { toast('Personnage prêté : mode Jeu uniquement'); return; }
+    if (ui.guest || ui.mjView) { toast(ui.mjView ? 'Fiche d’un joueur : lecture seule' : 'Personnage prêté : mode Jeu uniquement'); return; }
     openDialog({
       title: 'Mode de la fiche',
       body: `<div class="modes">${Object.entries(MODES).map(([k, m]) => `<button type="button" class="mode-opt ${ui.mode === k ? 'on' : ''}" data-m="${k}">${icon(m.icon)}<span><b>${m.label}</b><small>${m.desc}</small></span></button>`).join('')}</div>`,
