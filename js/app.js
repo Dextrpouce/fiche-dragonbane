@@ -512,9 +512,6 @@ function viewGroupe(c) {
     <section class="card span-all">
       <h2>Caisse et comptes</h2>
       ${accountsCard(g)}
-      ${g.accounts.length ? `<p class="center fortune">Fortune du groupe : <b class="${fortune(g) < 0 ? 'bad' : ''}">${fortune(g) < 0 ? '−' : ''}${fmtMoney(Math.abs(fortune(g)))}</b><br><small class="muted">caisse + dépôts + ce qu’on nous doit − ce qu’on doit</small></p>` : ''}
-      <div class="group-notes"><h3>Notes du groupe <button class="icon-btn small" data-act="gNotes" aria-label="Modifier les notes">${icon('edit')}</button></h3>
-        ${g.notes ? `<p class="small pre">${esc(g.notes)}</p>` : '<p class="small muted">Rendez-vous, promesses, rumeurs… touche le crayon.</p>'}</div>
     </section>
     ${carriers}
     <section class="card span-all">
@@ -624,8 +621,16 @@ function accountsCard(g) {
       <p class="small muted center">Total : ${fmtMoney(totalCopper(g.money))}</p>
       <div class="add-row center-row"><button class="btn small" data-act="gMoney" data-s="1">${icon('plus')} Recette</button><button class="btn small ghost" data-act="gMoney" data-s="-1">Dépense</button></div>
     </div>`;
+  // Dernière petite carte : fortune du groupe et notes
+  const f = fortune(g);
+  const summary = `<div class="purse-acct summary">
+      <div class="acct-head"><span class="acct-ico">⚜️</span><span class="acct-name"><b>Fortune du groupe</b><small>Caisse + dépôts + ce qu’on nous doit − ce qu’on doit</small></span></div>
+      <p class="center fortune-big ${f < 0 ? 'bad' : ''}">${f < 0 ? '−' : ''}${fmtMoney(Math.abs(f))}</p>
+      <div class="group-notes"><h3>Notes du groupe <button class="icon-btn small" data-act="gNotes" aria-label="Modifier les notes">${icon('edit')}</button></h3>
+        ${g.notes ? `<p class="small pre">${esc(g.notes)}</p>` : '<p class="small muted">Rendez-vous, promesses, rumeurs… touche le crayon.</p>'}</div>
+    </div>`;
   return `<div class="accounts">
-    <div class="acct-grid">${caisse}${rows}</div>
+    <div class="acct-grid">${caisse}${rows}${summary}</div>
     ${rows ? '' : '<p class="small muted center">Pas encore de compte : ajoute un dépôt chez un banquier, une dette, ce qu’on vous doit, ou un projet à payer en plusieurs fois.</p>'}
     <div class="add-row center-row"><button class="btn ghost small" data-act="gEditAcct">${icon('plus')} Nouveau compte</button></div>
   </div>`;
