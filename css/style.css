@@ -602,3 +602,7 @@ nav.tabs button span { white-space: nowrap; }
 .rule ul, .rule ol { margin: 4px 0 6px; padding-left: 20px; }
 .rule li { margin: 2px 0; }
 .filters.sub { margin: 0 0 6px; }
+/* Fenêtre de connexion */
+.login .btn.full { width: 100%; justify-content: center; }
+.login .or { margin: 10px 0 2px; }
+.login a { color: var(--red); }

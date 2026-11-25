@@ -1,5 +1,6 @@
 import * as R from './rules.js';
 import { store } from './store.js';
+import * as cloud from './cloud.js';
 import * as L from './library.js';
 import { MANUAL } from './manual.js';
 import { RULES } from './combat-rules.js';
@@ -28,6 +29,7 @@ const ICONS = {
   up: '<path d="M12 3l7 7h-4v6H9v-6H5z"/><path d="M8 21h8"/>',
   book: '<path d="M4 4h6a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4z"/><path d="M20 4h-6a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h6z"/>',
   cloud: '<path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9.5 4.3 4.3 0 0 0 7 18z"/>',
+  google: '<path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20.5 12H12.5"/>',
   dots: '<circle cx="12" cy="5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="19" r="1.3"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
@@ -125,6 +127,79 @@ function openDialog({ title, body, actions = [], onOpen, cls = '' }) {
 dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
 const cancel = { label: 'Annuler', cls: 'ghost' };
 const closeBtn = { label: 'Fermer', cls: 'ghost' };
+
+// ----- Connexion : compte Google ou e-mail + mot de passe (comme INS/MV ; utile sur iPad ou sans compte Google) -----
+const authErr = (e) => ({
+  'auth/invalid-credential': 'E-mail ou mot de passe incorrect',
+  'auth/wrong-password': 'E-mail ou mot de passe incorrect',
+  'auth/user-not-found': 'Aucun compte avec cet e-mail',
+  'auth/invalid-email': 'Adresse e-mail invalide',
+  'auth/missing-email': 'Saisis ton e-mail',
+  'auth/missing-password': 'Mot de passe manquant',
+  'auth/email-already-in-use': 'Un compte existe déjà avec cet e-mail : connecte-toi',
+  'auth/weak-password': 'Mot de passe trop court (6 caractères minimum)',
+  'auth/too-many-requests': 'Trop d’essais : réessaie dans quelques minutes',
+  'auth/network-request-failed': 'Pas de connexion internet',
+  'auth/operation-not-allowed': 'Connexion par e-mail non activée dans Firebase (voir README)',
+  'auth/popup-blocked': 'Fenêtre Google bloquée par le navigateur',
+  'auth/popup-closed-by-user': 'Fenêtre Google fermée',
+  'auth/unauthorized-domain': 'Domaine non autorisé dans Firebase (voir README)',
+}[e?.code] || e?.message || 'Erreur de connexion');
+
+function loginDialog() {
+  return new Promise((resolve, reject) => {
+    let mode = 'login'; let done = false;
+    const st = { email: '', pw: '', pw2: '' };
+    const draw = (msg = '', info = '') => {
+      const isNew = mode === 'new';
+      openDialog({
+        title: isNew ? 'Créer un compte' : 'Connexion',
+        cls: 'login',
+        body: `<p class="small muted">Le compte sauvegarde tes personnages et ton groupe en ligne, pour les retrouver sur tous tes appareils et partager le groupe. C’est le même compte que pour le Grimoire et INS/MV.</p>
+          ${isNew ? '' : `<button type="button" class="btn full google" data-lg="google">${icon('google')} Continuer avec Google</button>
+          <p class="small muted center or">ou avec ton e-mail (iCloud, Gmail, Outlook…)</p>`}
+          <div class="fields">
+            ${F.text('email', 'E-mail', st.email, 'full', 'type="email" autocomplete="email" autocapitalize="off" spellcheck="false"')}
+            ${F.text('pw', `Mot de passe${isNew ? ' (6 caractères minimum)' : ''}`, st.pw, 'full', `type="password" autocomplete="${isNew ? 'new-password' : 'current-password'}"`)}
+            ${isNew ? F.text('pw2', 'Confirme le mot de passe', st.pw2, 'full', 'type="password" autocomplete="new-password"') : ''}
+          </div>
+          ${msg ? `<p class="small bad">${esc(msg)}</p>` : ''}${info ? `<p class="small good">${esc(info)}</p>` : ''}
+          <p class="small center">${isNew
+            ? '<a href="#" data-lg="mode">J’ai déjà un compte</a>'
+            : '<a href="#" data-lg="mode">Créer un compte</a> · <a href="#" data-lg="reset">Mot de passe oublié</a>'}</p>`,
+        actions: [cancel, { label: isNew ? 'Créer le compte' : 'Se connecter', primary: true, onClick: (f) => { submit(f); return false; } }],
+        onOpen: (f) => {
+          const keep = () => { st.email = f.email.value; st.pw = f.pw.value; if (f.pw2) st.pw2 = f.pw2.value; };
+          const busy = (on) => f.querySelectorAll('button, input').forEach((el) => { el.disabled = on; });
+          const run = async (fn) => {
+            keep(); busy(true);
+            try { await fn(); done = true; dlg.close(); resolve(); } catch (e) { busy(false); draw(authErr(e)); }
+          };
+          submit = () => {
+            keep();
+            if (isNew && st.pw !== st.pw2) return draw('Les deux mots de passe ne sont pas identiques');
+            run(() => (isNew ? cloud.signUpEmail(st.email, st.pw) : cloud.signInEmail(st.email, st.pw)));
+          };
+          f.querySelector('[data-lg="google"]')?.addEventListener('click', () => run(() => cloud.signInGoogle()));
+          f.querySelector('[data-lg="mode"]').onclick = (e) => { e.preventDefault(); keep(); mode = isNew ? 'login' : 'new'; draw(); };
+          const reset = f.querySelector('[data-lg="reset"]');
+          if (reset) reset.onclick = async (e) => {
+            e.preventDefault(); keep();
+            if (!st.email.trim()) return draw('Saisis d’abord ton e-mail');
+            try { await cloud.resetPassword(st.email); draw('', 'E-mail de réinitialisation envoyé (regarde aussi dans les spams).'); } catch (err) { draw(authErr(err)); }
+          };
+          setTimeout(() => (st.email ? f.pw : f.email).focus(), 50);
+        },
+      });
+    };
+    let submit = () => {};
+    // Fermer la fenêtre sans s'être connecté = connexion annulée
+    const onClose = () => { dlg.removeEventListener('close', onClose); if (!done) reject(Object.assign(new Error('Connexion annulée'), { code: 'auth/popup-closed-by-user' })); };
+    draw();
+    dlg.addEventListener('close', onClose);
+  });
+}
+cloud.setLoginUI(loginDialog);
 
 function confirmDialog(title, text, okLabel, onOk) {
   openDialog({ title, body: `<p>${text}</p>`, actions: [cancel, { label: okLabel, primary: true, onClick: onOk }] });
@@ -828,7 +903,7 @@ function groupCarrierDialog(k) {
 function needCloud() {
   if (group.online) return false;
   if (!navigator.onLine) { toast('Il faut du réseau pour partager le groupe'); return true; }
-  toast('Connecte-toi d’abord avec Google (le nuage en haut)');
+  toast('Connecte-toi d’abord (le nuage en haut)');
   store.sync({ interactive: true });
   return true;
 }
@@ -838,7 +913,7 @@ function shareCreateDialog() {
     title: 'Partager le groupe',
     body: `<div class="fields">${F.text('name', 'Nom du groupe', 'Les aventuriers', 'full', 'autofocus')}</div>
       ${F.check('seed', 'Partir de mon groupe actuel (caisse, montures et matériel)', true)}
-      <p class="small muted">Tu obtiendras un code à donner aux autres joueurs. Ils le saisissent dans « Rejoindre avec un code » sur leur téléphone (connectés avec leur propre compte Google).</p>`,
+      <p class="small muted">Tu obtiendras un code à donner aux autres joueurs. Ils le saisissent dans « Rejoindre avec un code » sur leur téléphone (connectés avec leur propre compte : Google ou e-mail).</p>`,
     actions: [cancel, { label: 'Créer le groupe', primary: true, onClick: (f) => {
       const name = f.name.value.trim() || 'Les aventuriers';
       const seed = f.seed.checked ? store.group : { carriers: R.newGroup().carriers };
@@ -1702,12 +1777,12 @@ const A = {
       title: 'Sauvegarde en ligne',
       body: `<p>${esc(st.message || 'Non synchronisé')}</p>
         ${store.meta.lastSync ? `<p class="small muted">Dernière synchro : ${new Date(store.meta.lastSync).toLocaleString('fr-FR')}</p>` : ''}
-        <p class="small muted">Tes personnages sont toujours enregistrés sur l’appareil. Connecté à Google, ils sont aussi sauvegardés en ligne et retrouvés sur tes autres appareils.</p>`,
+        <p class="small muted">Tes personnages sont toujours enregistrés sur l’appareil. Une fois connecté (compte Google ou e-mail), ils sont aussi sauvegardés en ligne et retrouvés sur tes autres appareils.</p>`,
       actions: [
         ...(store.userEmail ? [{ label: 'Se déconnecter', cls: 'ghost', onClick: () => { store.disconnect().then(render); } }] : []),
         { label: 'Configuration', cls: 'ghost', onClick: () => { setTimeout(A.firebaseConfig); } },
         'spacer', closeBtn,
-        { label: store.userEmail ? 'Synchroniser' : 'Se connecter avec Google', primary: true, onClick: () => { store.sync({ interactive: true }); } },
+        { label: store.userEmail ? 'Synchroniser' : 'Se connecter', primary: true, onClick: () => { store.sync({ interactive: true }); } },
       ],
     });
   },

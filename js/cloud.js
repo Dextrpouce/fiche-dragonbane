@@ -34,11 +34,27 @@ export function init(config) {
 
 export const user = () => auth?.currentUser || null;
 
+// Connexion : l'interface fournit une fenêtre (Google ou e-mail + mot de passe) qui se résout une fois
+// connecté et échoue avec le code « auth/popup-closed-by-user » si on la ferme (comme l'appli INS/MV).
+// Même projet Firebase : un compte créé ici marche aussi dans le Grimoire et INS/MV.
+let loginUI = null;
+export const setLoginUI = (fn) => { loginUI = fn; };
+export async function signIn() { if (loginUI) return loginUI(); return signInGoogle(); }
 // Doit suivre un geste de l'utilisateur (ouvre la fenêtre Google)
-export async function signIn() {
+export async function signInGoogle() {
   const provider = new fb.GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
   await fb.signInWithPopup(auth, provider);
+}
+export async function signInEmail(email, password) {
+  await fb.signInWithEmailAndPassword(auth, email.trim(), password);
+}
+export async function signUpEmail(email, password) {
+  await fb.createUserWithEmailAndPassword(auth, email.trim(), password);
+}
+export async function resetPassword(email) {
+  auth.languageCode = 'fr';
+  await fb.sendPasswordResetEmail(auth, email.trim());
 }
 
 export async function signOut() {

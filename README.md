@@ -38,7 +38,7 @@ Si tu héberges l'appli sur la même adresse GitHub Pages que le Grimoire (`TON-
 ## Installer sur Android
 
 1. Ouvre l'adresse dans **Chrome**, menu **⋮** › **Installer l'application**.
-2. Touche le **nuage** en haut et connecte-toi avec Google : tes personnages te suivent sur tous tes appareils.
+2. Touche le **nuage** en haut et connecte-toi avec Google, ou avec un e-mail et un mot de passe (« Créer un compte » dans la fenêtre de connexion, pratique sur iPad ou sans compte Google ; « Mot de passe oublié » envoie un e-mail de réinitialisation). C'est le même compte que pour le Grimoire WFRP et INS/MV, car ils partagent le projet Firebase. Tes personnages te suivent sur tous tes appareils.
 
 ## Le nuage en haut de l'écran
 

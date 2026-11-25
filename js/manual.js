@@ -51,7 +51,7 @@ export const MANUAL = [
   ['Carnet', `
     <p>Identité, faiblesse, apparence, souvenir, compagnons et notes libres. L’identité se modifie en mode libre.</p>`],
   ['Groupe', `
-    <p><b>Groupe partagé</b> : touche « Partager ce groupe » pour obtenir un code, et donne-le aux autres joueurs. Chacun touche « Rejoindre avec un code » sur son téléphone (connecté avec son compte Google). Tout le monde voit et modifie la même caisse et le même matériel, en direct.</p>
+    <p><b>Groupe partagé</b> : touche « Partager ce groupe » pour obtenir un code, et donne-le aux autres joueurs. Chacun touche « Rejoindre avec un code » sur son téléphone (connecté avec son propre compte). Tout le monde voit et modifie la même caisse et le même matériel, en direct.</p>
     <p>Le <b>journal</b> note chaque modification : quand, quoi, et qui (le nom du personnage). Sans réseau, tes modifications attendent (⏳) et partent dès le retour du réseau.</p>
     <ul>
       <li><b>Caisse</b> : Recette ou Dépense. Coche la case pour prendre l’argent dans ta bourse ou l’y verser. Chaque ligne du journal s’annule avec ↶.</li>
@@ -65,7 +65,7 @@ export const MANUAL = [
     <p>Les noms sont des traductions libres et les effets sont résumés : le livre fait foi.</p>`],
   ['Sauvegarde et appareils', `
     <p>Tout est enregistré sur l’appareil : l’appli marche <b>sans internet</b>.</p>
-    <p>Menu › <b>Sauvegarde en ligne</b> : connecte-toi avec Google pour retrouver tes personnages et le groupe sur tous tes appareils. La pastille du nuage indique l’état : verte = à jour, jaune = en attente d’envoi, rouge = connexion à refaire.</p>
+    <p>Menu › <b>Sauvegarde en ligne</b> : connecte-toi avec ton compte Google ou avec un e-mail et un mot de passe (« Créer un compte » la première fois) pour retrouver tes personnages et le groupe sur tous tes appareils. La pastille du nuage indique l’état : verte = à jour, jaune = en attente d’envoi, rouge = connexion à refaire.</p>
     <p>Si tu modifies le même personnage sur deux appareils hors ligne, c’est la dernière modification qui gagne.</p>
     <p>Menu › <b>Exporter</b> crée un fichier de sauvegarde, <b>Importer</b> le recharge.</p>`],
   ['Installer sur le téléphone', `
