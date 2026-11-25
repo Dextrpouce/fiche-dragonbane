@@ -472,7 +472,8 @@ function viewGroupe(c) {
     </div>`).join('') || '<div class="empty">Aucune modification pour l’instant.</div>';
 
   const vehicles = g.carriers.filter((v) => R.CARRIER_TYPES[v.type]?.pulls);
-  const carriers = g.carriers.map((k) => {
+  // Du plus petit au plus grand (capacité, sacoches comprises) ; à égalité, l'ordre d'ajout
+  const carriers = g.carriers.map((k, i) => ({ k, i })).sort((a, b) => R.carrierCapacity(a.k) - R.carrierCapacity(b.k) || a.i - b.i).map(({ k }) => {
     const t = R.CARRIER_TYPES[k.type] || R.CARRIER_TYPES.autre;
     const cap = R.carrierCapacity(k); const load = R.carrierLoad(k);
     const items = k.items.map((it) => `<button class="list-item" data-act="gItem" data-k="${k.id}" data-id="${it.id}">
