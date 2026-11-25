@@ -574,7 +574,71 @@ function purseFix(p) {
 }
 // Icône dessinée (cartes) et emoji (listes déroulantes, qui n'affichent que du texte)
 const carrierKind = (k) => (R.CARRIER_TYPES[k.type]?.animal ? 'monture' : k.type === 'coffre' ? 'coffre' : k.type === 'barque' ? 'barque' : k.type === 'chariot' ? 'chariot' : 'charrette');
-const carrierIcon = (k) => icon(carrierKind(k));
+// Pictogrammes des transports (vue de profil, tournés vers la droite), viewBox 0 0 64 48.
+// Traits à l'encre + léger remplissage (F) pour les volumes.
+const TINT = 'style="fill:currentColor;fill-opacity:.13"';
+const CARRIER_SVG = {
+  // Âne : longues oreilles, crinière courte et dressée, queue à touffe
+  ane: `<path ${TINT} d="M13 23c0-6 5-9 12-9h13c3.5 0 5.5 1.5 6.5 4l1.5 4c.5 4-1.5 7-5 7H17c-2.5 0-4-2.5-4-6z"/>
+    <path ${TINT} d="M41 16l4-8c1-2 3-3 5-2.5l6 2.5c2.5 1 3 3.5 1.5 5.5l-1.5 1.5c-1.5 1-3.5 1-5-.5l-1.5-1.5-3.5 8"/>
+    <path d="M46.5 6.5L43.5 .8 49 4.7M50.5 5.6 51.2 0 53.4 6"/>
+    <path d="M41.5 15.5l2.6-5.6M43.4 17l2.4-5.3"/>
+    <path d="M17 29l-2.5 15M22 29l2 15M38 29l-2 15M43 28.5l3.5 15.5M12.5 44h3.5M23 44h3.5M34.5 44h3.5M45 44h3.5"/>
+    <path d="M13 20c-3 1-4.5 4-4 9l-1.5 4"/><path d="M6 34l1.5-1 1.5 1"/>
+    <circle cx="51.8" cy="8.6" r="1" fill="currentColor" stroke="none"/><path d="M56.5 12.5h.1"/>`,
+  // Cheval de selle : encolure longue, crinière, queue fournie, selle
+  cheval: `<path ${TINT} d="M12 24c0-6 5-9 12-9h13c3 0 5 1 6 3l2 5c.5 4-1.5 6.5-5 6.5H16c-2.5 0-4-2.5-4-5.5z"/>
+    <path ${TINT} d="M40 17l5-10c1-2 2.5-3 4.5-3 1 0 2 .5 2.5 1.5l5.5 7.5c1 1.5.5 3.5-1 4l-1.5.5c-1.5.5-3 0-4-1l-2-2.5-4 8"/>
+    <path d="M49 4.5l-1-3.5 2.6 3"/>
+    <path d="M44.5 6.5c-2 1-3.5 4-4.5 7M46.5 7.5c-2 2-3 4.5-3.5 7.5"/>
+    <path ${TINT} d="M22 15c0-2 1.5-3 4-3h6c2.5 0 4 1 4 3v3H22z"/>
+    <path d="M29 18v6M27 24h4"/>
+    <path d="M16 29.5l-2.5 14.5M21 29.5l2 14.5M37 29.5l-2 14.5M42 29l4 15M12 44h3.5M22 44h3.5M33.5 44h3.5M45 44h3.5"/>
+    <path d="M12 20c-4 1-6 5-6 10 0 3-1 5-2 6M12 22c-3 2-3.5 6-3 9"/>
+    <circle cx="51.5" cy="8.5" r="1" fill="currentColor" stroke="none"/>`,
+  // Cheval de guerre : caparaçon festonné, chanfrein, plumet
+  destrier: `<path ${TINT} d="M40 17l5-10c1-2 2.5-3 4.5-3 1 0 2 .5 2.5 1.5l5.5 7.5c1 1.5.5 3.5-1 4l-1.5.5c-1.5.5-3 0-4-1l-2-2.5-4 8"/>
+    <path d="M46.5 8.5l6 6M48 6l4.5-.5"/>
+    <path d="M49 4.5c-.5-2 0-3.5 1.5-4.5 0 2 1.5 2.5 1 4.5"/>
+    <path ${TINT} d="M11 21c0-5 4-8 11-8h16c3 0 5.5 2 6.5 5l1 3V33l-2.5 2.5L40 33l-3 2.5L34 33l-3 2.5L28 33l-3 2.5L22 33l-3 2.5L16 33l-3 2.5L11 33z"/>
+    <path d="M24 13v20M33 13v20" stroke-dasharray="1.5 2.5"/>
+    <path d="M19 15.5l3-3.5 3 3.5"/>
+    <path d="M15 35.5l-1.5 8.5M21 35.5l1.5 8.5M38 35.5l-1.5 8.5M44 35l2.5 9M12 44h3.5M21 44h3.5M35 44h3.5M45 44h3.5"/>
+    <path d="M11 20c-4 1-6 5-6 10l-2 5"/>
+    <circle cx="51.5" cy="8.5" r="1" fill="currentColor" stroke="none"/>`,
+  // Charrette : caisse en planches, grande roue à rayons, brancards
+  char: `<path ${TINT} d="M4 14h34v12H4z"/>
+    <path d="M4 18h34M4 22h34M10 14v12M32 14v12"/>
+    <path d="M38 22h12l10-4"/><path d="M38 25.5h11l10 1"/>
+    <circle ${TINT} cx="20" cy="33" r="11"/><circle cx="20" cy="33" r="2.2"/>
+    <path d="M20 22v8.8M20 35.2V44M9 33h8.8M22.2 33H31M12.2 25.2l6.2 6.2M21.6 34.6l6.2 6.2M27.8 25.2l-6.2 6.2M18.4 34.6l-6.2 6.2"/>
+    <path d="M4 26l-2 4"/>`,
+  // Chariot bâché : arceaux de toile, deux roues, timon
+  chariot: `<path ${TINT} d="M6 22c0-10 6-17 15-17h10c9 0 15 7 15 17z"/>
+    <path d="M16 6.5C13 10 12 16 12.5 22M26 5v17M36 6.5c3 3.5 4 9.5 3.5 15.5"/>
+    <path ${TINT} d="M3 22h46v7H3z"/><path d="M3 25.5h46"/>
+    <path d="M49 27h8l5-3"/>
+    <circle ${TINT} cx="13" cy="36.5" r="7.5"/><circle cx="13" cy="36.5" r="1.6"/>
+    <circle ${TINT} cx="39" cy="36.5" r="7.5"/><circle cx="39" cy="36.5" r="1.6"/>
+    <path d="M13 29v6M13 38v6M5.5 36.5h6M14.5 36.5h6M39 29v6M39 38v6M31.5 36.5h6M40.5 36.5h6"/>`,
+  // Barque : coque bordée, rame, vaguelettes
+  barque: `<path ${TINT} d="M3 24h58c-2.5 7-8 12-15 12H17C10 36 5 31 3 24z"/>
+    <path d="M6 29h52M10 33.5h44"/><path d="M14 24v-3h36v3"/>
+    <path d="M18 9l20 32"/><path ${TINT} d="M36 37.5l4 6.5 3-2-4-6z"/>
+    <path d="M2 42c3-2 5-2 8 0s5 2 8 0M44 42c3-2 5-2 8 0s5 2 8 0"/>`,
+  // Coffre : couvercle bombé, ferrures, serrure
+  coffre: `<path ${TINT} d="M9 22h46v20H9z"/>
+    <path ${TINT} d="M9 22v-4c0-6 5-10 11-10h24c6 0 11 4 11 10v4z"/>
+    <path d="M17 8.6V42M47 8.6V42M9 30h46"/>
+    <path ${TINT} d="M28.5 19h7v9h-7z"/><circle cx="32" cy="22.5" r="1.2"/><path d="M32 23.7v2"/>
+    <path d="M9 42h46"/>`,
+  // Autre : sac de voyage
+  autre: `<path ${TINT} d="M18 18c-6 4-9 11-9 17 0 6 5 9 23 9s23-3 23-9c0-6-3-13-9-17z"/>
+    <path d="M18 18c2-4 4-7 6-8M46 18c-2-4-4-7-6-8M24 10h16M24 10c-1-3 1-5 3-5h10c2 0 4 2 3 5"/>
+    <path d="M18 18h28M26 18c-2 6-2 14 0 22"/>`,
+};
+const carrierSvg = (type) => `<svg class="i ci" viewBox="0 0 64 48" aria-hidden="true">${CARRIER_SVG[type] || CARRIER_SVG.autre}</svg>`;
+const carrierIcon = (k) => carrierSvg(k.type);
 const carrierEmoji = (k) => ({ monture: '🐴', coffre: '🧰', barque: '🛶' })[carrierKind(k)] || '🛞';
 const pullers = (g, v) => v.pulledBy.map((id) => g.carriers.find((k) => k.id === id)).filter(Boolean);
 const attachedTo = (g, a) => g.carriers.find((v) => v.pulledBy.includes(a.id));
