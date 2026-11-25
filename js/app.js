@@ -465,12 +465,13 @@ function viewCombat(c) {
     <section class="card span-all">
       <h2>États</h2>
       <div class="conds">${conds}</div>
-      <p class="small muted hint">Un état donne un désavantage aux jets de l’attribut indiqué et des compétences qui en dépendent.</p>
-      <button class="music-toggle ${c.music ? 'on' : ''}" data-act="music" aria-pressed="${c.music ? 'true' : 'false'}">
-        <span class="mt-icon">♪</span>
-        <span class="mt-txt"><b>${c.music ? 'Le barde joue' : 'Musique du barde'}</b><small>${c.music ? 'Avantage à tous tes jets — touche pour arrêter' : 'Touche quand le barde joue : avantage à tous tes jets'}</small></span>
-        <span class="mt-switch"><i></i></span>
-      </button>
+      <div class="cond-foot">
+        <p class="small muted hint">Un état donne un désavantage aux jets de l’attribut indiqué et des compétences qui en dépendent.</p>
+        <!-- Barde : petite pastille sur la même ligne que l'aide -->
+        <button class="music-toggle compact ${c.music ? 'on' : ''}" data-act="music" aria-pressed="${c.music ? 'true' : 'false'}" title="${c.music ? 'Le barde joue : avantage à tous tes jets. Touche pour arrêter.' : 'Touche quand le barde joue : avantage à tous tes jets.'}">
+          <span class="mt-icon">♪</span><span class="mt-txt">${c.music ? '<b>Le barde joue</b> · avantage' : 'Musique du barde'}</span><span class="mt-switch"><i></i></span>
+        </button>
+      </div>
     </section>
     ${pool('hp', 'Points de vie', c.hp.cur, hpMax, 'hp')}
     ${pool('wp', 'Points de volonté', c.wp.cur, wpMax, 'wp')}
