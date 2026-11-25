@@ -18,7 +18,7 @@ Application pour téléphone, tablette et PC qui gère ton personnage de **Drago
 - **Carnet** : identité, faiblesse, apparence, souvenir, compagnons, notes.
 - **Trois modes** (bouton en haut) : **Jeu** (toucher = jet de dé), **Progression** (placer les coches et améliorer), **Libre** (saisir ou corriger sans contrainte).
 - Plusieurs personnages, export/import en fichier JSON.
-- **Manuel d’utilisation** intégré : menu ⋮ › Manuel d’utilisation, un sujet par onglet.
+- **Manuel d’utilisation** intégré : bouton **?** en haut (à côté du nuage) ou menu ⋮ › Manuel d’utilisation, un sujet par onglet.
 
 Tout est enregistré **sur l'appareil**, donc l'appli fonctionne **sans internet**. Dès que le réseau revient, les modifications sont envoyées en ligne automatiquement.
 

@@ -1,7 +1,7 @@
 // Manuel utilisateur affiché depuis le menu : [titre, contenu HTML]
 export const MANUAL = [
   ['Pour commencer', `
-    <p>Ouvre le <b>menu</b> (bouton ⋮ en haut) › <b>Nouveau personnage</b>. Donne un nom, choisis le peuple, l’âge et la profession (et l’école pour un mage), puis saisis les attributs ou tire-les (4D6, on garde les 3 meilleurs).</p>
+    <p>Ouvre le <b>menu</b> (bouton ⋮ en haut à droite ; le bouton <b>?</b> à côté ouvre ce manuel) › <b>Nouveau personnage</b>. Donne un nom, choisis le peuple, l’âge et la profession (et l’école pour un mage), puis saisis les attributs ou tire-les (4D6, on garde les 3 meilleurs).</p>
     <p>Coche ensuite les compétences entraînées : 6 de ta profession, plus 2, 4 ou 6 selon l’âge.</p>
     <p>Le personnage s’ouvre en <b>mode libre</b> : complète ce qui manque, puis touche <b>Terminer</b>.</p>`],
   ['Les trois modes', `

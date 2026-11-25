@@ -13,6 +13,7 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const fmtDate = (t) => new Date(t).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' });
 
 const ICONS = {
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.9.7c0 1.7-2.5 2.2-2.5 3.8"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/>',
   sheet: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7M9 9h3"/>',
   sword: '<path d="M20 4l-.6 3.4L10 16.8 7.2 14 16.6 4.6z"/><path d="M5.2 12.4l6.4 6.4"/><path d="M8.4 15.6 4.2 19.8"/><circle cx="3.6" cy="20.4" r=".9"/>',
   wand: '<path d="M4 20L15 9"/><path d="M17 3v3M15.5 4.5h3M20 8v2M19 9h2M13 4v1.5M12.2 4.8h1.6"/>',
@@ -139,6 +140,7 @@ function renderWelcome() {
   $app.innerHTML = `<div class="shell">
     <header class="topbar">
       <div class="who"><span class="crest">?</span><span class="who-txt"><div class="who-name">Aucun personnage</div><div class="who-sub">Crée ton premier aventurier</div></span></div>
+      <button class="icon-btn" data-act="manual" aria-label="Manuel d’utilisation">${icon('help')}</button>
       ${syncButton()}
       <button class="icon-btn" data-act="menu" aria-label="Menu">${icon('dots')}</button>
     </header>
@@ -179,6 +181,7 @@ function topbar(c) {
       <span class="who-txt"><div class="who-name">${esc(c.name || 'Sans nom')}</div><div class="who-sub">${esc(sub || 'Touche pour gérer tes personnages')}</div></span>
     </button>
     <button class="mode-toggle mode-${ui.mode}" data-act="modeMenu" aria-label="Mode : ${MODES[ui.mode].label}">${icon(MODES[ui.mode].icon)}<span>${MODES[ui.mode].label}</span></button>
+    <button class="icon-btn" data-act="manual" aria-label="Manuel d’utilisation">${icon('help')}</button>
     ${syncButton()}
     <button class="icon-btn" data-act="menu" aria-label="Menu">${icon('dots')}</button>
   </header>`;
