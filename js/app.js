@@ -291,7 +291,7 @@ function render() {
     ${ui.mjView ? `<div class="banner guest-banner mj-banner">👑<span>Fiche de <b>${esc(ui.mjView.name)}</b> (${esc(ui.mjViewPlayer || 'joueur')}) — lecture seule : rien n’est enregistré.</span><button class="btn small ghost-dark" data-act="mjClose">Retour au MJ</button></div>` : ''}
     ${ui.guest ? `<div class="banner guest-banner">🎭<span>Tu joues <b>${esc(ui.guest.name)}</b> à la place de ${esc(ui.guestOwner || 'son joueur')} — mode Jeu uniquement, tout est enregistré sur sa fiche.</span><button class="btn small ghost-dark" data-act="guestEnd">Rendre</button></div>` : ''}
     ${isFree() ? `<div class="banner free-banner">${icon('edit')}<span><b>Mode libre</b> — touche une valeur pour la changer, sans jet ni contrainte.</span><button class="btn small ghost-dark" data-act="setMode" data-m="normal">Terminer</button></div>` : ''}
-    ${isProg() ? `<div class="banner prog-banner">${icon('star')}<span><b>Progression</b> — ${marked} compétence${marked > 1 ? 's' : ''} cochée${marked > 1 ? 's' : ''}${c.pendingMarks ? `, <b>${c.pendingMarks}</b> coche${c.pendingMarks > 1 ? 's' : ''} de fin de séance à placer` : ''}. Touche une compétence pour la cocher.</span>
+    ${isProg() ? `<div class="banner prog-banner">${icon('star')}<span><b>Progression</b> — ${marked} compétence${marked > 1 ? 's' : ''} cochée${marked > 1 ? 's' : ''}${c.pendingMarks ? `, <b>${c.pendingMarks}</b> coche${c.pendingMarks > 1 ? 's' : ''} de fin de séance à placer` : ''}. ${c.pendingMarks ? 'Touche une compétence pour la cocher.' : 'Plus de coche en réserve.'}</span>
       <button class="btn small gold" data-act="advanceRolls" ${marked ? '' : 'disabled'}>${icon('d20')} Jets d’amélioration</button></div>` : ''}
     <main>${VIEWS[ui.tab](c)}</main>
     <nav class="tabs">${[...(c.stub ? [] : TABS), ...(isMJ() && !ui.mjView ? [['mj', 'MJ', 'crown']] : []), ...(c.stub ? TABS.filter(([k]) => ['journal', 'groupe', 'biblio'].includes(k)) : [])].filter(([k]) => k !== 'magie' || R.isCaster(c)).map(([k, l, i]) => `<button class="${ui.tab === k ? 'active' : ''}" data-act="tab" data-tab="${k}">${icon(i)}<span>${l}</span></button>`).join('')}</nav>
@@ -3182,7 +3182,7 @@ const A = {
         s.mark = false;
       } else if (s.value >= 18) { toast(`${s.name} est déjà au maximum (18)`); return; }
       else if (c.pendingMarks > 0) { s.mark = 'seance'; c.pendingMarks--; }
-      else s.mark = 'jeu';
+      else { toast('Plus de coche en réserve : réponds aux questions de fin de séance pour en gagner (un Dragon ou un Démon se coche en mode Jeu)'); return; }
       commit();
       return;
     }
