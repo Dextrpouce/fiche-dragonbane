@@ -511,15 +511,6 @@ function viewGroupe(c) {
   return `<div class="grid two groupe">
     <section class="card span-all">
       <h2>Caisse et comptes</h2>
-      <div class="purse-main">
-        <div class="purse-title">${icon('coin')} Caisse du groupe</div>
-        <div class="caisse"><span class="coin-big gold"><b>${+g.money.or || 0}</b> or</span><span class="coin-big silver"><b>${+g.money.argent || 0}</b> argent</span><span class="coin-big copper"><b>${+g.money.cuivre || 0}</b> cuivre</span></div>
-        <p class="small muted center">Total : ${fmtMoney(totalCopper(g.money))}</p>
-        <div class="add-row center-row">
-          <button class="btn" data-act="gMoney" data-s="1">${icon('plus')} Recette</button>
-          <button class="btn ghost" data-act="gMoney" data-s="-1">${icon('coin')} Dépense</button>
-        </div>
-      </div>
       ${accountsCard(g)}
       ${g.accounts.length ? `<p class="center fortune">Fortune du groupe : <b class="${fortune(g) < 0 ? 'bad' : ''}">${fortune(g) < 0 ? '−' : ''}${fmtMoney(Math.abs(fortune(g)))}</b><br><small class="muted">caisse + dépôts + ce qu’on nous doit − ce qu’on doit</small></p>` : ''}
       <div class="group-notes"><h3>Notes du groupe <button class="icon-btn small" data-act="gNotes" aria-label="Modifier les notes">${icon('edit')}</button></h3>
@@ -625,9 +616,17 @@ function accountsCard(g) {
       <div class="add-row center-row">${buttons}<button class="btn small ghost" data-act="gAcct" data-id="${a.id}" aria-label="Autres opérations">…</button></div>
     </div>`;
   }).join('');
+  // La caisse : première petite carte, dorée pour ressortir
+  const caisse = `<div class="purse-acct main">
+      <div class="acct-head"><span class="acct-ico coin-ico">${icon('coin')}</span>
+        <span class="acct-name"><b>Caisse du groupe</b><small>L’argent qu’on a sur nous</small></span></div>
+      <div class="caisse small"><span class="coin-big gold"><b>${+g.money.or || 0}</b> or</span><span class="coin-big silver"><b>${+g.money.argent || 0}</b> argent</span><span class="coin-big copper"><b>${+g.money.cuivre || 0}</b> cuivre</span></div>
+      <p class="small muted center">Total : ${fmtMoney(totalCopper(g.money))}</p>
+      <div class="add-row center-row"><button class="btn small" data-act="gMoney" data-s="1">${icon('plus')} Recette</button><button class="btn small ghost" data-act="gMoney" data-s="-1">Dépense</button></div>
+    </div>`;
   return `<div class="accounts">
-    <h3>Comptes</h3>
-    ${rows ? `<div class="acct-grid">${rows}</div>` : '<div class="empty">Aucun compte. Ajoute un dépôt chez un banquier, une dette, ce qu’on vous doit, ou un projet à payer en plusieurs fois.</div>'}
+    <div class="acct-grid">${caisse}${rows}</div>
+    ${rows ? '' : '<p class="small muted center">Pas encore de compte : ajoute un dépôt chez un banquier, une dette, ce qu’on vous doit, ou un projet à payer en plusieurs fois.</p>'}
     <div class="add-row center-row"><button class="btn ghost small" data-act="gEditAcct">${icon('plus')} Nouveau compte</button></div>
   </div>`;
 }
