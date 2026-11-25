@@ -9,8 +9,8 @@ const NPC_FIELDS = ['name', 'role', 'place', 'attitude', 'notes', 'photo', 'port
 const PLACE_FIELDS = ['name', 'kind', 'where', 'notes', 'photo', 'npcIds'];
 const short = (t) => ((t || '').length > 60 ? `${t.slice(0, 57)}…` : t || '');
 const LABEL = { title: 'titre', date: 'date', summary: 'résumé', places: 'notes de lieux', loot: 'butin', npcs: 'notes PNJ' };
-// Historique : toutes les lignes du journal de campagne portent cat: 'j' (affichées dans l'onglet Historique du journal,
-// pas dans celui de la caisse). key : les corrections répétées d'un même champ par la même personne sont regroupées.
+// Historique : chaque ligne porte son type (session, pnj, lieu, piste) pour les filtres de l'historique.
+// key : les corrections répétées d'un même champ par la même personne sont regroupées.
 
 export function applyJournalOp(s, op) {
   s.journal ??= []; s.npcs ??= []; s.lieux ??= [];
@@ -18,7 +18,8 @@ export function applyJournalOp(s, op) {
   const npc = (id) => s.npcs.find((x) => x.id === id) || fail('PNJ introuvable (supprimé ?)');
   const lieu = (id) => s.lieux.find((x) => x.id === id) || fail('Lieu introuvable (supprimé ?)');
   const nextN = () => s.journal.reduce((m, x) => Math.max(m, +x.n || 0), 0) + 1;
-  const ok = (text = '', key) => ({ text, changed: true, cat: 'j', ...(key ? { key } : {}) });
+  const cat = op.t.startsWith('j:npc') ? 'pnj' : op.t.startsWith('j:place') ? 'lieu' : op.t.startsWith('j:todo') ? 'piste' : 'session';
+  const ok = (text = '', key) => ({ text, changed: true, cat, ...(key ? { key } : {}) });
   // Dernier auteur d'un champ (journal partagé : op.by et op.at sont ajoutés par l'appli)
   const mark = (o, f) => { if (op.by) o.ed = { ...(o.ed || {}), [f]: { by: op.by, at: op.at || Date.now() } }; };
   switch (op.t) {

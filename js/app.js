@@ -42,6 +42,7 @@ const ICONS = {
   eraser: '<path d="M8 20h12"/><path d="M4.5 15.5l9-9a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"/><path d="M9 11l5 5"/>',
   expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
   camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+  history: '<path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3 4v4h4"/><path d="M12 7.5V12l3 2"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   check: '<path d="M5 12l5 5L20 7"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>',
@@ -602,15 +603,6 @@ function shareCard() {
 
 function viewGroupe(c) {
   const g = G();
-  const glog = g.log.filter((e) => e.cat !== 'j'); // le journal de campagne a son propre historique
-  const lastUndo = glog.find((e) => e.undo && !e.undone);
-  const shown = ui.logAll ? glog : glog.slice(0, 25);
-  const log = shown.map((e) => `<div class="log-row ${e.undone ? 'undone' : ''} ${e.pending ? 'pending' : ''}">
-      <span class="log-date">${fmtWhen(e.date)}</span>
-      <span class="log-txt">${e.pending ? '⏳ ' : ''}${esc(e.text ?? e.label ?? '')}${e.who ? ` <span class="muted">· ${esc(e.who)}</span>` : ''}</span>
-      <span class="log-amt ${e.sign === 0 ? 'muted' : e.sign < 0 ? 'bad' : 'good'}">${e.amount ? `${e.sign === 0 ? '' : e.sign < 0 ? '−' : '+'}${fmtMoney(e.amount)}` : ''}</span>
-      ${e === lastUndo ? `<button class="icon-btn small" data-act="gUndo" data-id="${e.id}" title="Annuler">${icon('undo')}</button>` : '<span></span>'}
-    </div>`).join('') || '<div class="empty">Aucune modification pour l’instant.</div>';
 
   const vehicles = g.carriers.filter((v) => R.CARRIER_TYPES[v.type]?.pulls);
   // Du plus petit au plus grand (capacité, sacoches comprises) ; à égalité, l'ordre d'ajout
@@ -662,11 +654,7 @@ function viewGroupe(c) {
     </section>
     ${saleCard(g)}
     ${shareCard()}
-    <section class="card span-all journal">
-      <h2>Journal</h2>
-      ${log}
-      ${glog.length > 25 ? `<div class="add-row center-row"><button class="btn ghost small" data-act="gLogAll">${ui.logAll ? 'Réduire' : `Tout afficher (${glog.length})`}</button></div>` : ''}
-    </section>
+    <div class="span-all hist-link"><button class="btn ghost small" data-act="history">${icon('history')} Historique des modifications</button></div>
   </div>`;
 }
 
@@ -1301,6 +1289,66 @@ function viewCarnet(c) {
   </div>`;
 }
 
+// ----- Historique des modifications (à la demande : menu ⋮ ou bouton discret) -----
+const LOG_CATS = {
+  caisse: ['Caisse', '🪙'], comptes: ['Comptes', '🏦'], materiel: ['Matériel', '🎒'], vente: ['Ventes', '🏷️'], notes: ['Notes', '📝'],
+  session: ['Sessions', '📖'], pnj: ['PNJ', '👤'], lieu: ['Lieux', '📍'], piste: ['Pistes', '☑️'], autre: ['Autre', '•'],
+};
+const JOURNAL_CATS = ['session', 'pnj', 'lieu', 'piste'];
+// Type d'une ligne (les plus anciennes n'en avaient pas : on le devine d'après le texte)
+function logCat(e) {
+  if (e.cat && e.cat !== 'j' && LOG_CATS[e.cat]) return e.cat;
+  const t = e.text ?? e.label ?? '';
+  if (/^(Nouveau PNJ|PNJ)/.test(t)) return 'pnj';
+  if (/^(Nouveau lieu|Lieu )/.test(t)) return 'lieu';
+  if (/^Piste/.test(t)) return 'piste';
+  if (e.cat === 'j' || /^(Journal|Session)/.test(t)) return 'session';
+  if (/^(Vente|Annulé : Vente)/.test(t)) return 'vente';
+  if (/compte|Dépôt|Retrait|Remboursement|Paiement|Emprunt|Prêt|nous rembourse|dette/i.test(t)) return 'comptes';
+  if (/^Notes du groupe/.test(t)) return 'notes';
+  if (e.amount) return 'caisse';
+  return 'materiel';
+}
+function historyDialog(filter = 'all') {
+  let f = filter; let limit = 100;
+  const draw = () => {
+    const g = G();
+    const sorted = [...g.log].sort((a, b) => b.date - a.date); // du plus récent au plus ancien
+    const all = sorted.map((e) => ({ e, cat: logCat(e) }));
+    const present = new Set(all.map((x) => x.cat));
+    const chips = [['all', 'Tout'], ...Object.entries(LOG_CATS).filter(([k]) => present.has(k)).map(([k, [l, i]]) => [k, `${i} ${l}`])];
+    if (JOURNAL_CATS.some((k) => present.has(k))) chips.splice(1, 0, ['journal', '📖 Tout le journal']);
+    const keep = (x) => f === 'all' || x.cat === f || (f === 'journal' && JOURNAL_CATS.includes(x.cat));
+    const list = all.filter(keep);
+    const lastUndo = sorted.find((e) => e.undo && !e.undone);
+    const rows = list.slice(0, limit).map(({ e, cat }) => {
+      const [label, ico] = LOG_CATS[cat];
+      return `<div class="log-row hist-row ${e.undone ? 'undone' : ''} ${e.pending ? 'pending' : ''}">
+        <span class="log-date">${fmtWhen(e.date)}</span>
+        <span class="hist-tag" title="${label}">${ico}</span>
+        <span class="log-txt">${e.pending ? '⏳ ' : ''}${esc(e.text ?? e.label ?? '')}${e.who ? ` <span class="muted">· ${esc(e.who)}</span>` : ''}</span>
+        <span class="log-amt ${e.sign === 0 ? 'muted' : e.sign < 0 ? 'bad' : 'good'}">${e.amount ? `${e.sign === 0 ? '' : e.sign < 0 ? '−' : '+'}${fmtMoney(e.amount)}` : ''}</span>
+        ${e === lastUndo ? `<button type="button" class="icon-btn small" data-undo="${e.id}" title="Annuler cette modification">${icon('undo')}</button>` : '<span></span>'}
+      </div>`;
+    }).join('') || '<div class="empty">Aucune modification de ce type.</div>';
+    openDialog({
+      title: 'Historique des modifications',
+      cls: 'history',
+      body: `<div class="filters hist-filters">${chips.map(([k, l]) => `<button type="button" class="chip ${f === k ? 'on' : ''}" data-hf="${k}">${l}</button>`).join('')}</div>
+        <p class="small muted">${group.shared ? `Groupe « ${esc(group.shared.name)} » : qui a modifié quoi, du plus récent au plus ancien.` : 'Ton groupe personnel, du plus récent au plus ancien.'} Seule la dernière action annulable peut être annulée (↶). Les notes secrètes n’y figurent jamais.</p>
+        <div class="hist-list">${rows}</div>
+        ${list.length > limit ? '<div class="add-row center-row"><button type="button" class="btn ghost small" data-hmore>Afficher plus</button></div>' : ''}`,
+      actions: [closeBtn],
+      onOpen: (form) => {
+        form.querySelectorAll('[data-hf]').forEach((b) => { b.onclick = () => { f = b.dataset.hf; limit = 100; draw(); }; });
+        form.querySelector('[data-hmore]')?.addEventListener('click', () => { limit += 200; draw(); });
+        form.querySelector('[data-undo]')?.addEventListener('click', (ev) => { A.gUndo({ dataset: { id: ev.currentTarget.dataset.undo } }); draw(); });
+      },
+    });
+  };
+  draw();
+}
+
 // ---------- Journal : une page par session (rubriques, pistes, PNJ, croquis au stylet) ----------
 // Deux sources, même code : le journal personnel (dans la fiche) ou celui du groupe partagé (tout le monde
 // le lit et le complète). Toute modification est une opération (journal-ops.js) : appliquée à la fiche,
@@ -1567,22 +1615,7 @@ function viewJournal(c) {
   const sessions = list.map((s) => `<button class="j-item ${s === cur ? 'on' : ''}" data-act="jOpen" data-id="${s.id}" data-search="${esc(R.norm(sessionText(s, j)))}">
       <b>Session ${s.n}</b><span>${esc(s.title || 'Sans titre')}</span><small>${fmtDay(s.date)}${s.sketch ? ' · ✎' : ''}</small>
     </button>`).join('');
-  const jTabs = `<div class="filters j-tabs"><button class="chip ${ui.jView !== 'npcs' ? 'on' : ''}" data-act="jView" data-v="sessions">Sessions (${list.length})</button><button class="chip ${ui.jView === 'npcs' ? 'on' : ''}" data-act="jView" data-v="npcs">PNJ (${j.npcs.length})</button><button class="chip ${ui.jView === 'lieux' ? 'on' : ''}" data-act="jView" data-v="lieux">Lieux (${j.lieux.length})</button>${sh ? `<button class="chip ${ui.jView === 'hist' ? 'on' : ''}" data-act="jView" data-v="hist">Historique</button>` : ''}</div>`;
-  if (ui.jView === 'hist' && sh) {
-    const all = (j.log || []).filter((e) => e.cat === 'j');
-    const rows = (ui.logAll ? all : all.slice(0, 60)).map((e) => `<div class="log-row ${e.pending ? 'pending' : ''}">
-        <span class="log-date">${fmtWhen(e.date)}</span>
-        <span class="log-txt">${e.pending ? '⏳ ' : ''}${esc(e.text)} <span class="muted">· ${esc(e.who || '')}</span></span>
-      </div>`).join('') || '<div class="empty">Aucune modification pour l’instant.</div>';
-    return `<div class="grid journal">
-      <section class="card j-list"><h2>Journal</h2>${shareInfo}${jTabs}
-        <p class="small muted">Qui a modifié quoi dans le journal du groupe, du plus récent au plus ancien. Plusieurs corrections d’un même texte par la même personne en moins de 10 minutes comptent pour une ligne. Tes notes secrètes n’y figurent jamais.</p>
-      </section>
-      <section class="card j-hist"><h2>Historique du journal</h2>${rows}
-        ${all.length > 60 ? `<div class="add-row center-row"><button class="btn ghost small" data-act="gLogAll">${ui.logAll ? 'Réduire' : `Tout afficher (${all.length})`}</button></div>` : ''}
-      </section>
-    </div>`;
-  }
+  const jTabs = `<div class="filters j-tabs"><button class="chip ${ui.jView !== 'npcs' ? 'on' : ''}" data-act="jView" data-v="sessions">Sessions (${list.length})</button><button class="chip ${ui.jView === 'npcs' ? 'on' : ''}" data-act="jView" data-v="npcs">PNJ (${j.npcs.length})</button><button class="chip ${ui.jView === 'lieux' ? 'on' : ''}" data-act="jView" data-v="lieux">Lieux (${j.lieux.length})</button></div>${sh ? `<button class="btn ghost small hist-mini" data-act="history" data-f="journal">${icon('history')} Qui a modifié quoi</button>` : ''}`;
   if (ui.jView === 'lieux') {
     return `<div class="grid journal">
       <section class="card j-list">
@@ -2352,6 +2385,7 @@ const A = {
         <button type="button" data-m="exportAll">${icon('down')} Exporter tous les personnages</button>
         <button type="button" data-m="importFile">${icon('upload')} Importer un fichier</button>
         <button type="button" data-m="cloudMenu">${icon('cloud')} Sauvegarde en ligne</button>
+        <button type="button" data-m="history">${icon('history')} Historique des modifications</button>
         <button type="button" data-m="manual">${icon('book')} Manuel d’utilisation</button>
         <button type="button" data-m="soundToggle">${icon('d20')} Son des dés : ${snd.soundOn() ? 'activé' : 'coupé'}</button>
       </div>
@@ -2396,6 +2430,7 @@ const A = {
   },
   jView(el) { ui.jView = el.dataset.v; ui.jSearch = ''; render(); },
   jGoSession(el) { ui.jView = 'sessions'; ui.jSession = el.dataset.id; ui.jSearch = ''; render(); document.querySelector('.j-page')?.scrollIntoView({ block: 'start' }); },
+  history(el) { historyDialog(el?.dataset?.f || 'all'); },
   npcNew() { npcDialog(null); },
   placeNew() { placeDialog(null); },
   placeOpen(el) { const l = placeOf(J(), el.dataset.id); if (l) placeDialog(l); },

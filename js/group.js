@@ -75,8 +75,20 @@ export const fortune = (g) => cu(g.money) + (g.accounts || []).reduce((t, a) => 
 const toCoins = (c) => ({ or: Math.floor(c / 100), argent: Math.floor((c % 100) / 10), cuivre: c % 10 });
 
 // ---------- Opérations : modifient l'état et renvoient la ligne de journal ----------
-// Ligne : { text, amount?, sign?, undo? (opération inverse), purse? (bourse du personnage à corriger si on annule) }
+// Ligne : { text, cat (type), amount?, sign?, undo? (opération inverse), purse? (bourse du personnage à corriger si on annule) }
+// Types de lignes (filtres de l'historique) ; le journal de campagne donne les siens (session, pnj, lieu, piste)
+const OP_CAT = {
+  money: 'caisse', buy: 'caisse', unbuy: 'caisse', sell: 'vente', unsell: 'vente', notes: 'notes',
+  acct: 'comptes', acctAdd: 'comptes', acctEdit: 'comptes', acctDel: 'comptes',
+  itemAdd: 'materiel', itemEdit: 'materiel', itemDel: 'materiel', itemMove: 'materiel', itemTake: 'materiel',
+  carrierAdd: 'materiel', carrierEdit: 'materiel', carrierDel: 'materiel', saddle: 'materiel', harness: 'materiel',
+};
 export function applyOp(s, op) {
+  const e = applyOp0(s, op);
+  if (e?.text && !e.cat) e.cat = op.t === 'undo' ? (s.log.find((x) => x.id === op.id)?.cat || 'autre') : (OP_CAT[op.t] || 'autre');
+  return e;
+}
+function applyOp0(s, op) {
   for (const [k, v] of Object.entries(EMPTY())) if (s[k] === undefined) s[k] = v;
   upgradeGroup(s);
   const car = (id) => s.carriers.find((x) => x.id === id) || fail('Monture ou véhicule introuvable (supprimé ?)');

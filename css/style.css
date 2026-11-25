@@ -763,3 +763,13 @@ body.no-scroll { overflow: hidden; }
 .npc-card > .j-ed { display: block; margin: 6px 0 0; }
 .j-ed-row { margin-top: -6px; }
 .j-hist .log-row { grid-template-columns: 74px 1fr; }
+/* Historique des modifications (fenêtre à la demande) */
+.history { max-width: 760px; }
+.hist-filters { margin-bottom: 6px; }
+.hist-list { max-height: 58vh; overflow: auto; margin: 0 -4px; padding: 0 4px; }
+.log-row.hist-row { grid-template-columns: 74px 26px 1fr auto 34px; }
+.hist-tag { font-size: 16px; text-align: center; }
+.hist-link { display: flex; justify-content: center; }
+.hist-link .btn, .hist-mini { opacity: .8; }
+.hist-mini { margin: -4px 0 10px; }
+@media (max-width: 560px) { .log-row.hist-row { grid-template-columns: 58px 22px 1fr auto 30px; font-size: 13px; } }
