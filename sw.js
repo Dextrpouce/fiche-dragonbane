@@ -1,9 +1,9 @@
 // Service worker : garde l'appli en cache pour qu'elle fonctionne sans internet.
-const VERSION = 'v74';
+const VERSION = 'v75';
 const CACHE = `dragonbane-${VERSION}`;
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/style.css',
-  'js/app.js', 'js/rules.js', 'js/library.js', 'js/manual.js', 'js/group.js', 'js/combat-rules.js', 'js/sound.js', 'js/sketch.js', 'js/media.js', 'js/journal-ops.js','js/store.js', 'js/cloud.js', 'js/config.js',
+  'js/app.js', 'js/rules.js', 'js/library.js', 'js/manual.js', 'js/group.js', 'js/combat-rules.js', 'js/sound.js', 'js/sketch.js', 'js/media.js', 'js/journal-ops.js', 'js/creation-data.js','js/store.js', 'js/cloud.js', 'js/config.js',
   'icons/favicon-64.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/icon-maskable-512.png', 'icons/dragon.png', 'icons/demon.png',
 ];
 

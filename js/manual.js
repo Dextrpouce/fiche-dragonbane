@@ -1,9 +1,12 @@
 // Manuel utilisateur affiché depuis le menu : [titre, contenu HTML]
 export const MANUAL = [
   ['Pour commencer', `
-    <p>Ouvre le <b>menu</b> (bouton ⋮ en haut à droite ; le bouton <b>?</b> à côté ouvre ce manuel) › <b>Nouveau personnage</b>. Donne un nom, choisis le peuple, l’âge et la profession (et l’école pour un mage), puis saisis les attributs ou tire-les (4D6, on garde les 3 meilleurs).</p>
-    <p>Coche ensuite les compétences entraînées : 6 de ta profession, plus 2, 4 ou 6 selon l’âge.</p>
-    <p>Le personnage s’ouvre en <b>mode libre</b> : complète ce qui manque, puis touche <b>Terminer</b>.</p>`],
+    <p>Touche ton nom en haut (ou le menu ⋮) › <b>Nouveau personnage</b>. Deux chemins :</p>
+    <ul>
+      <li><b>🧙 Assistant pas à pas</b> : un nouveau personnage selon les règles. Peuple (D12), profession (D10) et capacité héroïque, âge (D6), nom et surnom tirés dans les listes du livre, attributs (4D6 en gardant les 3 meilleurs, chaque score placé où tu veux, puis un échange possible ; l’âge s’applique ensuite), compétences (6 de la profession au moins, 8 à 12 en tout selon l’âge), un des trois lots d’équipement de ta profession avec rations et pièces d’argent, pour un mage 3 tours et 3 sorts de rang 1, puis faiblesse, souvenir et apparence. À chaque étape, choisis ou laisse les dés décider ; « Précédent » permet de revenir en arrière. Avec « Je lance mes dés », tu saisis tes propres résultats.</li>
+      <li><b>📄 Recopier une fiche existante</b> : ton personnage existe déjà sur papier. Saisis ses attributs, ses compétences (proposées d’après les attributs, corrige celles qui diffèrent), ses capacités héroïques, ses PV et PVol actuels, sa bourse et sa personnalité, sans tirage ni contrainte. Ajoute ensuite armes, armure, objets et sorts dans les onglets.</li>
+    </ul>
+    <p>Tout reste modifiable ensuite en <b>mode libre</b>.</p>`],
   ['Les trois modes', `
     <p>Le bouton en haut de l’écran change de mode :</p>
     <ul>

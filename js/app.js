@@ -6,6 +6,7 @@ import * as SK from './sketch.js';
 import * as media from './media.js';
 import { applyJournalOp } from './journal-ops.js';
 import * as L from './library.js';
+import * as CD from './creation-data.js';
 import { MANUAL } from './manual.js';
 import { RULES } from './combat-rules.js';
 import { group, ACCOUNT_KINDS, fortune } from './group.js';
@@ -2534,67 +2535,355 @@ function freeRoll(expr) {
 }
 
 // ================= Création de personnage =================
+// Deux chemins : l'assistant pas à pas (règles du livre, avec tirages) ou la saisie d'une fiche qui existe déjà.
 function creationDialog() {
-  const rollAttr = () => { const r = [R.d(6), R.d(6), R.d(6), R.d(6)].sort((a, b) => a - b); return r[1] + r[2] + r[3]; };
-  const skillChecks = (prof, school) => {
-    const sugg = R.professionSkills(prof, school);
-    const box = (s) => `<label class="check skill-check ${sugg.includes(s.id) ? 'sugg' : ''}"><input type="checkbox" name="sk" value="${s.id}"><span>${esc(s.name)} <small>${s.attr}</small></span></label>`;
-    return `${sugg.length ? `<h3>Compétences de profession <small>(choisis-en 6)</small></h3><div class="checks">${sugg.map((id) => box(R.SKILL[id])).join('')}</div>` : ''}
-      <h3>Autres compétences</h3><div class="checks">${R.SKILLS.filter((s) => !sugg.includes(s.id)).map(box).join('')}</div>`;
-  };
   openDialog({
     title: 'Nouveau personnage',
+    body: `<div class="create-choice">
+        <button type="button" class="create-opt" data-cc="wizard"><b>🧙 Assistant pas à pas</b><small>Un nouveau personnage selon les règles : peuple, profession, âge, nom, attributs (4D6), compétences, équipement de départ, sorts, faiblesse, souvenir et apparence. Choisis ou laisse les dés décider.</small></button>
+        <button type="button" class="create-opt" data-cc="sheet"><b>📄 Recopier une fiche existante</b><small>Ton personnage existe déjà sur papier : saisis directement ses attributs, ses compétences, ses capacités et ses PV, sans tirage ni contrainte.</small></button>
+      </div>`,
+    actions: [cancel],
+    onOpen: (f) => f.querySelectorAll('[data-cc]').forEach((b) => { b.onclick = () => (b.dataset.cc === 'wizard' ? creationWizard() : existingSheetDialog()); }),
+  });
+}
+
+// Enregistre le personnage créé (dans le groupe choisi depuis la bannière, sinon sans groupe)
+function finishCreation(c, msg) {
+  if (ui.newInGroup) { c.groupId = ui.newInGroup; store.add(c); group.switchTo(c.groupId); } else { store.add(c); group.deactivate(); }
+  ui.newInGroup = null; setMjActive(false);
+  ui.mode = 'normal'; ui.tab = 'fiche';
+  dlg.close(); render(); window.scrollTo(0, 0);
+  toast(msg);
+}
+
+const pickOne = (arr) => arr[R.d(arr.length) - 1];
+const libWeapon = (name) => { const x = L.WEAPONS.find((w) => w.name === name); return x ? { name: x.name, skill: x.skill, damage: x.damage, bonus: x.bonus, strReq: x.str || 0, grip: x.grip, range: x.range, durability: x.dur, features: x.features, broken: false } : null; };
+const libArmor = (name) => { const x = L.ARMORS.find((a) => a.name === name); return x ? { name: x.name, rating: x.rating, banes: x.banes } : null; };
+const libSpell = (x) => ({ name: x.name, school: x.school, rank: x.rank, prereq: x.prereq, req: x.req, time: x.time, range: x.range, duration: x.duration, desc: x.desc, power: x.power, prepared: false });
+// Texte d'un lot d'équipement (les armes au choix séparées par « ou »)
+const gearSetText = (set) => [...set.items.map((it) => (it.w ? [].concat(it.w).join(' ou ') : it.a || it.h || it.i)), `${set.food} rations`, `${set.silver} argent`].join(', ');
+
+function creationWizard() {
+  const st = {
+    step: 0, kin: 'humain', prof: 'guerrier', school: 'elementalisme', age: 'adulte', name: '', nick: '', ability: '',
+    attrs: Object.fromEntries(R.ATTRS.map((a) => [a.key, null])), pending: null, swapped: false, swapSel: null, manualAttrs: realDice(),
+    trained: new Set(), gear: null, weaponPick: {}, food: null, silver: null, tricks: new Set(), spells: new Set(),
+    weakness: '', memento: '', appearance: '',
+  };
+  const isMage = () => st.prof === 'mage';
+  const steps = () => ['peuple', 'profession', 'nom', 'attributs', 'competences', 'equipement', ...(isMage() ? ['magie'] : []), 'personnalite', 'recap'];
+  const ageOf = () => R.AGE[st.age];
+  const finalAttr = (k) => (st.attrs[k] == null ? null : clamp(st.attrs[k] + (ageOf().mods[k] || 0), 1, 18));
+  const profSkills = () => (isMage() ? R.SCHOOLS[st.school].skills : R.PROF[st.prof].skills);
+  const need = () => 6 + ageOf().free;
+  const dice = (expr) => (realDice() ? null : R.rollExpr(expr).total);
+  const rollBtn = (what, label) => `<button type="button" class="btn small ghost" data-wz="${what}">${icon('d20')} ${label}</button>`;
+  const defaultTrained = () => { st.trained = new Set(isMage() ? [st.school] : []); };
+
+  const views = {
+    peuple: () => {
+      const k = R.KIN[st.kin];
+      return `<p class="small muted">Étape 1 : ton peuple. Il donne ta capacité innée et ton déplacement.</p>
+        <div class="fields">${F.select('kin', 'Peuple', st.kin, R.KINS.filter((x) => x.key !== 'autre').map((x) => [x.key, x.name]))}</div>
+        <div class="add-row">${rollBtn('kin', 'Tirer au D12')}</div>
+        <div class="wz-info"><b>${esc(k.name)}</b> · déplacement ${k.move}${k.abilities.map(([n, wp]) => `<p class="small"><b>${esc(n)}</b>${wp ? ` (${wp} PVol)` : ''} : ${esc(R.abilityInfo(n)?.desc || '')}</p>`).join('')}</div>`;
+    },
+    profession: () => {
+      const p = R.PROF[st.prof];
+      const choices = CD.ABILITY_CHOICE[st.prof];
+      return `<p class="small muted">Étape 2 : ta profession. Elle donne tes compétences de départ, ta capacité héroïque et ton équipement.</p>
+        <div class="fields">${F.select('prof', 'Profession', st.prof, R.PROFESSIONS.filter((x) => x.key !== 'autre').map((x) => [x.key, x.name]))}
+          ${isMage() ? F.select('school', 'École de magie', st.school, Object.entries(R.SCHOOLS).map(([k, s]) => [k, s.name])) : ''}
+          ${choices ? F.select('ability', 'Capacité héroïque', st.ability || choices[0], choices.map((n) => [n, n])) : ''}</div>
+        <div class="add-row">${rollBtn('prof', 'Tirer au D10')}</div>
+        <div class="wz-info"><p class="small"><b>Attribut clé :</b> ${p.attr || '—'}</p>
+          <p class="small"><b>Compétences :</b> ${profSkills().map((id) => esc(R.SKILL[id].name)).join(', ')}</p>
+          <p class="small"><b>Capacité héroïque :</b> ${isMage() ? 'aucune au départ : tu as ta magie (3 tours et 3 sorts de rang 1).' : esc(choices ? (st.ability || choices[0]) : p.ability)}${!isMage() ? ` — ${esc(R.findHeroic(choices ? (st.ability || choices[0]) : p.ability)?.desc || '')}` : ''}</p></div>`;
+    },
+    nom: () => `<p class="small muted">Étape 3 : ton âge et ton nom.</p>
+        <div class="fields">${F.select('age', 'Âge', st.age, R.AGES.map((a) => [a.key, a.name]))}</div>
+        <div class="add-row">${rollBtn('age', 'Tirer l’âge au D6')}</div>
+        <p class="small wz-info">${esc(ageOf().name)} : ${6 + ageOf().free} compétences entraînées${Object.keys(ageOf().mods).length ? ` · attributs ${Object.entries(ageOf().mods).map(([k, v]) => `${k} ${v > 0 ? '+' : ''}${v}`).join(', ')}` : ''}.</p>
+        <div class="fields">${F.text('name', 'Nom', st.name, 'full', 'placeholder="Choisis-en un, ou tire-le dans la liste de ton peuple"')}
+          ${F.text('nick', 'Surnom (facultatif)', st.nick, 'full')}</div>
+        <div class="add-row">${rollBtn('name', `Nom ${esc(R.KIN[st.kin].name.toLowerCase())} au hasard`)}${rollBtn('nick', `Surnom de ${esc(R.PROF[st.prof].name.toLowerCase())}`)}</div>
+        <p class="small muted">Noms typiques : ${CD.NAMES[st.kin].join(', ')}.</p>`,
+    attributs: () => {
+      const done = R.ATTRS.every((a) => st.attrs[a.key] != null);
+      const cells = R.ATTRS.map((a) => {
+        const v = st.attrs[a.key]; const fv = finalAttr(a.key); const mod = ageOf().mods[a.key];
+        if (st.manualAttrs) return `<div class="field wz-attr"><label>${a.key}</label><input type="number" name="at_${a.key}" min="3" max="18" inputmode="numeric" value="${v ?? ''}"><small>${mod ? `âge ${mod > 0 ? '+' : ''}${mod}` : ''}</small></div>`;
+        const cls = v == null ? (st.pending ? 'open' : '') : st.swapSel === a.key ? 'sel' : '';
+        return `<button type="button" class="wz-attr ${cls}" data-at="${a.key}" ${v == null && !st.pending ? 'disabled' : ''}><span>${a.key}</span><b>${fv ?? '—'}</b><small>${v != null && mod ? `${v} ${mod > 0 ? '+' : ''}${mod} (âge)` : esc(a.name)}</small></button>`;
+      }).join('');
+      const derived = done ? (() => { const g = (k) => finalAttr(k); return `<p class="small wz-info">PV ${g('CON')} · PVol ${g('VOL')} · déplacement ${R.KIN[st.kin].move + R.moveMod(g('AGI'))} · bonus aux dégâts FOR ${R.damageBonus(g('FOR')) || '—'}, AGI ${R.damageBonus(g('AGI')) || '—'}</p>`; })() : '';
+      return `<p class="small muted">Étape 4 : tes attributs. Lance 4D6 et garde les trois meilleurs, puis place le score sur l’attribut de ton choix ; six fois. Une fois tout placé, tu peux échanger deux scores. L’âge s’applique ensuite (18 au plus).</p>
+        <label class="check"><input type="checkbox" data-wz="manual" ${st.manualAttrs ? 'checked' : ''}><span>🎲 Je lance mes dés (je saisis les scores)</span></label>
+        ${st.manualAttrs ? '' : `<div class="wz-roll">${st.pending ? `<div class="dice">${st.pending.dice.map((v, i) => dieEl(6, v, `small ${i === st.pending.drop ? 'drop' : ''}`)).join('')}</div><p class="small"><b>${st.pending.total}</b> : touche l’attribut où le placer.</p>`
+          : !done ? rollBtn('attr', `Lancer 4D6 (${R.ATTRS.filter((a) => st.attrs[a.key] == null).length} restants)`) : `<p class="small">${st.swapped ? 'Échange fait.' : 'Tu peux échanger deux scores : touche-les l’un après l’autre.'}</p>`}
+          ${R.ATTRS.some((a) => st.attrs[a.key] != null) ? `<button type="button" class="btn small ghost" data-wz="attrReset">Recommencer</button>` : ''}</div>`}
+        <div class="wz-attrs">${cells}</div>${derived}`;
+    },
+    competences: () => {
+      const prof = profSkills(); const n = st.trained.size; const inProf = [...st.trained].filter((id) => prof.includes(id)).length;
+      const box = (s) => {
+        const on = st.trained.has(s.id); const locked = isMage() && s.id === st.school;
+        const a = finalAttr(s.attr);
+        return `<label class="check skill-check ${prof.includes(s.id) ? 'sugg' : ''}"><input type="checkbox" data-sk="${s.id}" ${on ? 'checked' : ''} ${locked || (!on && n >= need()) ? 'disabled' : ''}><span>${esc(s.name)} <small>${s.attr} · ${on ? R.startValue(s.kind, a, true) : R.startValue(s.kind, a, false)}</small></span></label>`;
+      };
+      return `<p class="small muted">Étape 5 : tes compétences. <b>${need()}</b> compétences entraînées (âge ${esc(ageOf().name.toLowerCase())}), dont au moins <b>6</b> de ta profession. Une compétence entraînée vaut le double de sa chance de base.</p>
+        <p class="small wz-count ${n === need() && inProf >= 6 ? 'good' : ''}">Choisies : <b>${n}</b> / ${need()} · de la profession : <b>${inProf}</b> / 6 au moins</p>
+        <h3>Compétences de profession</h3><div class="checks">${prof.map((id) => box(R.SKILL[id])).join('')}</div>
+        <h3>Autres compétences</h3><div class="checks">${R.SKILLS.filter((s) => !prof.includes(s.id) && s.kind !== 'magie').map(box).join('')}</div>`;
+    },
+    equipement: () => {
+      const sets = CD.GEAR_SETS[st.prof];
+      const set = st.gear != null ? sets[st.gear] : null;
+      return `<p class="small muted">Étape 6 : ton équipement de départ. Choisis un des trois lots de ta profession (ou tire-le au D6). Tu as aussi des vêtements simples.</p>
+        <div class="checks one">${sets.map((s, i) => `<label class="check wz-set"><input type="radio" name="gear" value="${i}" ${st.gear === i ? 'checked' : ''}><span><b>${i * 2 + 1}–${i * 2 + 2}</b> ${esc(gearSetText(s))}</span></label>`).join('')}</div>
+        <div class="add-row">${rollBtn('gear', 'Tirer au D6')}</div>
+        ${set ? `${set.items.map((it, j) => (Array.isArray(it.w) ? F.select(`wp_${j}`, 'Arme au choix', st.weaponPick[j] || it.w[0], it.w.map((n) => [n, n])) : '')).join('')}
+          <div class="fields">
+            <div class="field"><label>Rations (${set.food})</label><input type="number" name="food" min="1" inputmode="numeric" value="${st.food ?? ''}" placeholder="${realDice() ? 'tes dés' : ''}"></div>
+            <div class="field"><label>Pièces d’argent (${set.silver})</label><input type="number" name="silver" min="1" inputmode="numeric" value="${st.silver ?? ''}" placeholder="${realDice() ? 'tes dés' : ''}"></div>
+          </div>${realDice() ? '' : `<div class="add-row">${rollBtn('reroll', 'Relancer rations et argent')}</div>`}` : ''}`;
+    },
+    magie: () => {
+      const ok = (x) => x.school === 'general' || x.school === st.school;
+      const tr = L.TRICKS.filter(ok); const sp = L.SPELLS.filter((x) => ok(x) && x.rank === 1);
+      const row = (x, kind, set) => `<label class="check wz-spell"><input type="checkbox" data-${kind}="${esc(x.name)}" ${set.has(x.name) ? 'checked' : ''} ${!set.has(x.name) && set.size >= 3 ? 'disabled' : ''}><span><b>${esc(x.name)}</b> <small>${esc(L.SCHOOL_LABEL[x.school])} — ${esc(x.desc)}</small></span></label>`;
+      return `<p class="small muted">Étape 7 : ta magie. Choisis <b>3 tours</b> et <b>3 sorts de rang 1</b>, de ton école (${esc(R.SCHOOLS[st.school].name)}) ou de magie générale. Tu reçois un grimoire.</p>
+        <h3>Tours de magie (${st.tricks.size}/3)</h3><div class="checks one">${tr.map((x) => row(x, 'tr', st.tricks)).join('')}</div>
+        <h3>Sorts de rang 1 (${st.spells.size}/3)</h3><div class="checks one">${sp.map((x) => row(x, 'sp', st.spells)).join('')}</div>`;
+    },
+    personnalite: () => `<p class="small muted">Étape ${steps().indexOf('personnalite') + 1} : ta personnalité (facultatif). Jouer ta faiblesse rapporte une coche en fin de séance ; ton souvenir aide à guérir un état pendant un repos court.</p>
+        <div class="fields">
+          ${F.text('weakness', 'Faiblesse', st.weakness, 'full', 'list="wzWeak" placeholder="Choisis dans la liste ou écris la tienne"')}
+          ${F.text('memento', 'Souvenir', st.memento, 'full', 'list="wzMem" placeholder="Un objet minuscule auquel tu tiens"')}
+          ${F.area('appearance', 'Apparence', st.appearance)}
+        </div>
+        <datalist id="wzWeak">${CD.WEAKNESSES.map((w) => `<option value="${esc(w)}">`).join('')}</datalist>
+        <datalist id="wzMem">${CD.MEMENTOS.map((w) => `<option value="${esc(w)}">`).join('')}</datalist>
+        <div class="add-row">${rollBtn('weak', 'Faiblesse (D20)')}${rollBtn('mem', 'Souvenir (D20)')}${rollBtn('look', 'Trait d’apparence (D20)')}</div>`,
+    recap: () => {
+      const set = CD.GEAR_SETS[st.prof][st.gear];
+      return `<p class="small muted">Dernière étape : vérifie, puis crée ton personnage. Tout reste modifiable ensuite en mode Libre.</p>
+        <div class="wz-recap">
+          <p><b>${esc([st.name, st.nick].filter(Boolean).join(' '))}</b> — ${esc(R.KIN[st.kin].name)} · ${esc(R.PROF[st.prof].name)}${isMage() ? ` (${esc(R.SCHOOLS[st.school].name)})` : ''} · ${esc(ageOf().name)}</p>
+          <p class="small">${R.ATTRS.map((a) => `${a.key} <b>${finalAttr(a.key)}</b>`).join(' · ')} · PV ${finalAttr('CON')} · PVol ${finalAttr('VOL')}</p>
+          <p class="small"><b>Compétences :</b> ${[...st.trained].map((id) => `${esc(R.SKILL[id].name)} ${R.startValue(R.SKILL[id].kind, finalAttr(R.SKILL[id].attr), true)}`).join(', ')}</p>
+          <p class="small"><b>Équipement :</b> ${esc(set.items.map((it, j) => (it.w ? (Array.isArray(it.w) ? st.weaponPick[j] || it.w[0] : it.w) : it.a || it.h || it.i)).join(', '))} · ${st.food} rations · ${st.silver} argent</p>
+          ${isMage() ? `<p class="small"><b>Tours :</b> ${[...st.tricks].map(esc).join(', ')} · <b>Sorts :</b> ${[...st.spells].map(esc).join(', ')}</p>` : ''}
+          ${st.weakness ? `<p class="small"><b>Faiblesse :</b> ${esc(st.weakness)}</p>` : ''}${st.memento ? `<p class="small"><b>Souvenir :</b> ${esc(st.memento)}</p>` : ''}${st.appearance ? `<p class="small"><b>Apparence :</b> ${esc(st.appearance)}</p>` : ''}
+        </div>`;
+    },
+  };
+
+  // Lit le formulaire de l'étape affichée
+  const read = (f) => {
+    const id = steps()[st.step];
+    if (id === 'peuple') st.kin = f.kin.value;
+    if (id === 'profession') {
+      const before = st.prof + st.school;
+      st.prof = f.prof.value; if (f.school) st.school = f.school.value; st.ability = f.ability?.value || '';
+      if (before !== st.prof + st.school) { defaultTrained(); st.gear = null; st.weaponPick = {}; st.food = null; st.silver = null; st.tricks.clear(); st.spells.clear(); }
+    }
+    if (id === 'nom') { st.age = f.age.value; st.name = f.name.value.trim(); st.nick = f.nick.value.trim(); }
+    if (id === 'attributs' && st.manualAttrs) R.ATTRS.forEach((a) => { const v = num(f[`at_${a.key}`].value); st.attrs[a.key] = v ? clamp(v, 3, 18) : null; });
+    if (id === 'equipement' && st.gear != null) {
+      CD.GEAR_SETS[st.prof][st.gear].items.forEach((it, j) => { if (f[`wp_${j}`]) st.weaponPick[j] = f[`wp_${j}`].value; });
+      st.food = num(f.food.value) || null; st.silver = num(f.silver.value) || null;
+    }
+    if (id === 'personnalite') { st.weakness = f.weakness.value.trim(); st.memento = f.memento.value.trim(); st.appearance = f.appearance.value.trim(); }
+  };
+  // Peut-on passer à l'étape suivante ?
+  const check = () => {
+    const id = steps()[st.step];
+    if (id === 'nom' && !st.name) return 'Donne un nom à ton personnage (ou tire-le au hasard)';
+    if (id === 'attributs' && R.ATTRS.some((a) => st.attrs[a.key] == null)) return st.manualAttrs ? 'Saisis les six attributs (3 à 18)' : 'Lance et place les six attributs';
+    if (id === 'competences') {
+      const inProf = [...st.trained].filter((x) => profSkills().includes(x)).length;
+      if (inProf < 6) return 'Choisis au moins 6 compétences de ta profession';
+      if (st.trained.size !== need()) return `Choisis ${need()} compétences en tout`;
+    }
+    if (id === 'equipement') { if (st.gear == null) return 'Choisis un lot d’équipement'; if (!st.food || !st.silver) return 'Indique tes rations et tes pièces d’argent'; }
+    if (id === 'magie' && (st.tricks.size !== 3 || st.spells.size !== 3)) return 'Choisis 3 tours et 3 sorts';
+    return '';
+  };
+
+  const create = () => {
+    const attrs = Object.fromEntries(R.ATTRS.map((a) => [a.key, finalAttr(a.key)]));
+    const c = R.newCharacter({ name: [st.name, st.nick].filter(Boolean).join(' '), kin: st.kin, profession: st.prof, school: isMage() ? st.school : '', age: st.age, attrs, trained: [...st.trained] });
+    // Capacité héroïque au choix (Artisan)
+    if (st.ability) { const h = R.findHeroic(st.ability); const a = c.abilities.find((x) => x.source === 'Profession'); if (a && h) Object.assign(a, { name: h.name, wp: h.wp, req: h.req, desc: h.desc }); }
+    // Équipement : armes à portée de main (3 au plus, le reste dans le sac), armure, casque, objets
+    const set = CD.GEAR_SETS[st.prof][st.gear];
+    c.backpack = false;
+    set.items.forEach((it, j) => {
+      if (it.w) {
+        const w = libWeapon(Array.isArray(it.w) ? st.weaponPick[j] || it.w[0] : it.w);
+        if (w && c.weapons.length < 3) c.weapons.push(w);
+        else if (w) c.items.push({ id: R.uid(), name: w.name, qty: 1, weight: 1, notes: '', worn: false });
+      } else if (it.a) c.armor = libArmor(it.a) || c.armor;
+      else if (it.h) c.helmet = libArmor(it.h) || c.helmet;
+      else if (it.i === 'Sac à dos') c.backpack = true;
+      else {
+        const g = L.GEAR.find((x) => x.name === it.i);
+        const found = c.items.find((x) => x.name === it.i);
+        if (found) found.qty += 1;
+        else c.items.push({ id: R.uid(), name: it.i, qty: it.qty || 1, weight: g?.item === false ? 0 : (g?.w ?? 1), notes: g?.item === false ? `${g.cat} (peut rejoindre le matériel du groupe)` : '', worn: false });
+      }
+    });
+    const ration = L.GEAR.find((x) => x.name === 'Ration de voyage');
+    c.items.push({ id: R.uid(), name: 'Ration de voyage', qty: st.food, weight: ration?.w ?? 1, notes: '4 rations = 1 objet', worn: false });
+    c.money.argent = st.silver;
+    if (isMage()) {
+      c.tricks = L.TRICKS.filter((x) => st.tricks.has(x.name)).map((x) => ({ name: x.name, school: x.school, desc: x.desc }));
+      c.spells = L.SPELLS.filter((x) => st.spells.has(x.name) && x.rank === 1).map(libSpell);
+    }
+    Object.assign(c, { weakness: st.weakness, memento: st.memento, appearance: st.appearance });
+    logEntry(c, 'Création du personnage (assistant)');
+    finishCreation(c, `${c.name} est prêt à partir à l’aventure !`);
+  };
+
+  const draw = () => {
+    const list = steps(); const id = list[st.step]; const last = st.step === list.length - 1;
+    openDialog({
+      title: `Nouveau personnage — ${st.step + 1}/${list.length}`,
+      cls: 'wide wizard',
+      body: `<div class="wz-steps">${list.map((s, i) => `<i class="${i < st.step ? 'done' : i === st.step ? 'on' : ''}"></i>`).join('')}</div>${views[id]()}`,
+      actions: [
+        st.step ? { label: '← Précédent', cls: 'ghost', onClick: (f) => { read(f); st.step--; draw(); return false; } } : { label: '← Retour', cls: 'ghost', onClick: () => { creationDialog(); return false; } },
+        'spacer',
+        { label: last ? `${icon('check')} Créer le personnage` : 'Suivant →', primary: true, onClick: (f) => {
+          read(f);
+          if (last) { create(); return false; }
+          const err = check(); if (err) { toast(err); return false; }
+          st.step++;
+          // En arrivant à l'équipement : rations et argent tirés (sauf vrais dés)
+          draw(); return false;
+        } },
+      ],
+      onOpen: (f) => {
+        const redraw = () => { read(f); draw(); };
+        f.querySelectorAll('select').forEach((s) => { if (['kin', 'prof', 'school', 'ability', 'age'].includes(s.name)) s.onchange = redraw; });
+        f.querySelectorAll('[data-wz]').forEach((b) => {
+          const k = b.dataset.wz;
+          const run = () => {
+            read(f);
+            if (k === 'kin') st.kin = CD.KIN_ROLL[R.d(12) - 1];
+            if (k === 'prof') { const p = CD.PROF_ROLL[R.d(10) - 1]; if (p !== st.prof) { st.prof = p; defaultTrained(); st.gear = null; st.weaponPick = {}; } }
+            if (k === 'age') st.age = CD.AGE_ROLL[R.d(6) - 1];
+            if (k === 'name') st.name = pickOne(CD.NAMES[st.kin]);
+            if (k === 'nick') st.nick = pickOne(CD.NICKNAMES[st.prof]);
+            if (k === 'manual') { st.manualAttrs = b.checked; st.pending = null; }
+            if (k === 'attr') { const d4 = [R.d(6), R.d(6), R.d(6), R.d(6)]; const drop = d4.indexOf(Math.min(...d4)); st.pending = { dice: d4, drop, total: d4.reduce((a, v) => a + v, 0) - d4[drop] }; }
+            if (k === 'attrReset') { R.ATTRS.forEach((a) => { st.attrs[a.key] = null; }); st.pending = null; st.swapped = false; st.swapSel = null; }
+            if (k === 'gear' || k === 'reroll') {
+              if (k === 'gear') { const r = R.d(6); st.gear = r <= 2 ? 0 : r <= 4 ? 1 : 2; st.weaponPick = {}; }
+              const set = CD.GEAR_SETS[st.prof][st.gear]; st.food = dice(set.food); st.silver = dice(set.silver);
+            }
+            if (k === 'weak') st.weakness = pickOne(CD.WEAKNESSES);
+            if (k === 'mem') st.memento = pickOne(CD.MEMENTOS);
+            if (k === 'look') { const t = pickOne(CD.APPEARANCES); st.appearance = st.appearance ? `${st.appearance}. ${t}` : t; }
+            draw();
+          };
+          if (b.type === 'checkbox') b.onchange = run; else b.onclick = run;
+        });
+        // Attributs : placer le score tiré, ou échanger deux scores
+        f.querySelectorAll('[data-at]').forEach((b) => { b.onclick = () => {
+          const k = b.dataset.at;
+          if (st.pending && st.attrs[k] == null) { st.attrs[k] = st.pending.total; st.pending = null; }
+          else if (!st.pending && R.ATTRS.every((a) => st.attrs[a.key] != null) && !st.swapped) {
+            if (!st.swapSel) st.swapSel = k;
+            else if (st.swapSel === k) st.swapSel = null;
+            else { const o = st.swapSel; [st.attrs[o], st.attrs[k]] = [st.attrs[k], st.attrs[o]]; st.swapSel = null; st.swapped = true; }
+          }
+          draw();
+        }; });
+        f.querySelectorAll('[data-sk]').forEach((x) => { x.onchange = () => { if (x.checked) st.trained.add(x.dataset.sk); else st.trained.delete(x.dataset.sk); draw(); }; });
+        f.querySelectorAll('[data-tr]').forEach((x) => { x.onchange = () => { if (x.checked) st.tricks.add(x.dataset.tr); else st.tricks.delete(x.dataset.tr); draw(); }; });
+        f.querySelectorAll('[data-sp]').forEach((x) => { x.onchange = () => { if (x.checked) st.spells.add(x.dataset.sp); else st.spells.delete(x.dataset.sp); draw(); }; });
+        f.querySelectorAll('[name=gear]').forEach((x) => { x.onchange = () => { read(f); st.gear = +x.value; st.weaponPick = {}; const set = CD.GEAR_SETS[st.prof][st.gear]; if (!realDice()) { st.food = dice(set.food); st.silver = dice(set.silver); } else { st.food = null; st.silver = null; } draw(); }; });
+      },
+    });
+  };
+  defaultTrained();
+  draw();
+}
+
+// Saisie d'une fiche qui existe déjà : tout se recopie tel quel, sans tirage
+function existingSheetDialog() {
+  const heroics = R.HEROIC.map((h) => h.name).sort((a, b) => a.localeCompare(b, 'fr'));
+  openDialog({
+    title: 'Recopier une fiche existante',
     cls: 'wide',
-    body: `<div class="fields">
-        ${F.text('name', 'Nom', '', 'full', 'autofocus required')}
+    body: `<p class="small muted">Recopie ta fiche papier. Les compétences se calculent d’après les attributs ; corrige celles qui diffèrent. Armes, armure, objets et sorts s’ajoutent ensuite dans les onglets Combat, Sac et Magie.</p>
+      <div class="fields">
+        ${F.text('name', 'Nom', '', 'full', 'required')}
         ${F.select('kin', 'Peuple', 'humain', R.KINS.map((k) => [k.key, k.name]))}
-        ${F.select('age', 'Âge', 'adulte', R.AGES.map((a) => [a.key, a.name]))}
         ${F.select('profession', 'Profession', 'guerrier', R.PROFESSIONS.map((p) => [p.key, p.name]))}
         ${F.select('school', 'École de magie', 'elementalisme', Object.entries(R.SCHOOLS).map(([k, s]) => [k, s.name]), 'school-field')}
+        ${F.select('age', 'Âge', 'adulte', R.AGES.map((a) => [a.key, a.name]))}
       </div>
-      <h3>Attributs <button type="button" class="btn small ghost" data-roll-all>${icon('d20')} Tirer 4D6 (3 meilleurs)</button></h3>
-      <div class="attr-inputs">${R.ATTRS.map((a) => `<div class="field"><label>${a.key}</label><input type="number" inputmode="numeric" name="a_${a.key}" value="10" min="3" max="18"></div>`).join('')}</div>
-      ${F.check('ageMods', 'Appliquer l’effet de l’âge sur les attributs', true)}<span class="small muted age-mods"></span>
-      <p class="small muted">PV = CON · PVol = VOL · chaque compétence entraînée vaut le double de sa chance de base.</p>
-      <div class="skill-picks"></div>
-      <p class="small skill-count"></p>`,
-    actions: [cancel, { label: 'Créer', primary: true, onClick: (f) => {
+      <h3>Attributs <small>(tels qu’écrits sur ta fiche)</small></h3>
+      <div class="attr-inputs">${R.ATTRS.map((a) => `<div class="field"><label>${a.key}</label><input type="number" inputmode="numeric" name="a_${a.key}" value="10" min="1" max="18"></div>`).join('')}</div>
+      <div class="fields">
+        ${F.num('hpcur', 'PV actuels (vide = maximum)', '')}
+        ${F.num('wpcur', 'PVol actuels (vide = maximum)', '')}
+      </div>
+      <h3>Compétences <small>(niveau)</small></h3>
+      <div class="sheet-skills">${R.SKILLS.map((s) => `<label class="sheet-skill"><span>${esc(s.name)} <small>${s.attr}</small></span><input type="number" inputmode="numeric" name="sk_${s.id}" min="0" max="18"></label>`).join('')}</div>
+      <h3>Capacités héroïques</h3>
+      <p class="small muted">La capacité de ton peuple est ajoutée d’office.</p>
+      <div class="checks">${heroics.map((n) => `<label class="check"><input type="checkbox" name="h" value="${esc(n)}"><span>${esc(n)}</span></label>`).join('')}</div>
+      <h3>Bourse</h3>
+      <div class="fields">${F.num('or', 'Or', '')}${F.num('argent', 'Argent', '')}${F.num('cuivre', 'Cuivre', '')}</div>
+      <h3>Personnalité</h3>
+      <div class="fields">${F.text('weakness', 'Faiblesse', '', 'full')}${F.text('memento', 'Souvenir', '', 'full')}${F.area('appearance', 'Apparence', '')}</div>`,
+    actions: [{ label: '← Retour', cls: 'ghost', onClick: () => { creationDialog(); return false; } }, 'spacer', { label: `${icon('check')} Créer`, primary: true, onClick: (f) => {
       const name = f.name.value.trim();
       if (!name) { toast('Donne un nom à ton personnage'); return false; }
-      const mods = f.ageMods.checked ? R.AGE[f.age.value].mods : {};
-      const attrs = Object.fromEntries(R.ATTRS.map((a) => [a.key, clamp(num(f[`a_${a.key}`].value) + (mods[a.key] || 0), 1, 18)]));
-      const trained = [...f.querySelectorAll('[name=sk]:checked')].map((x) => x.value);
-      const c = R.newCharacter({ name, kin: f.kin.value, profession: f.profession.value, school: f.profession.value === 'mage' ? f.school.value : '', age: f.age.value, attrs, trained });
-      logEntry(c, 'Création du personnage');
-      // Bouton + d'un groupe dans la bannière : le personnage en fait partie ; sinon il n'est dans aucun groupe
-      if (ui.newInGroup) { c.groupId = ui.newInGroup; store.add(c); group.switchTo(c.groupId); } else { store.add(c); group.deactivate(); }
-      ui.newInGroup = null; setMjActive(false);
-      ui.mode = 'libre'; ui.tab = 'fiche';
-      render();
-      toast(`${name} est prêt. Complète sa fiche en mode libre.`);
+      const attrs = Object.fromEntries(R.ATTRS.map((a) => [a.key, clamp(num(f[`a_${a.key}`].value) || 10, 1, 18)]));
+      const prof = f.profession.value;
+      const c = R.newCharacter({ name, kin: f.kin.value, profession: prof, school: prof === 'mage' ? f.school.value : '', age: f.age.value, attrs });
+      // Compétences : niveau saisi (entraînée si au-dessus de sa chance de base)
+      c.skills.forEach((s) => {
+        const v = f[`sk_${s.id}`]?.value;
+        if (v === '' || v == null) return;
+        s.value = clamp(num(v), 0, 18);
+        s.trained = s.value > R.startValue(s.kind, attrs[s.attr], false);
+      });
+      // Capacités : celle du peuple, puis celles cochées
+      const picked = [...f.querySelectorAll('[name=h]:checked')].map((x) => x.value);
+      c.abilities = [...c.abilities.filter((a) => a.source === 'Peuple'), ...picked.map((n) => { const h = R.findHeroic(n); return { id: R.uid(), name: h.name, wp: h.wp || '', req: h.req || '', desc: h.desc || '', source: 'Héroïque' }; })];
+      if (f.hpcur.value !== '') c.hp.cur = clamp(num(f.hpcur.value), 0, R.maxHP(c));
+      if (f.wpcur.value !== '') c.wp.cur = clamp(num(f.wpcur.value), 0, R.maxWP(c));
+      c.money = { or: num(f.or.value), argent: num(f.argent.value), cuivre: num(f.cuivre.value) };
+      Object.assign(c, { weakness: f.weakness.value.trim(), memento: f.memento.value.trim(), appearance: f.appearance.value.trim() });
+      logEntry(c, 'Fiche recopiée');
+      finishCreation(c, `${name} est enregistré. Ajoute ses armes, son équipement${prof === 'mage' ? ' et ses sorts' : ''} dans les onglets.`);
+      return false;
     } }],
     onOpen: (f) => {
-      const picks = f.querySelector('.skill-picks');
-      const refresh = () => {
+      // Niveaux proposés d'après les attributs (tant que le champ n'a pas été corrigé à la main)
+      const fill = () => {
         f.querySelector('.school-field').style.display = f.profession.value === 'mage' ? '' : 'none';
-        const kept = new Set([...f.querySelectorAll('[name=sk]:checked')].map((x) => x.value));
-        if (f.profession.value === 'mage') { R.MAGIC_SKILLS.forEach((id) => kept.delete(id)); kept.add(f.school.value); }
-        picks.innerHTML = skillChecks(f.profession.value, f.school.value);
-        picks.querySelectorAll('[name=sk]').forEach((x) => { x.checked = kept.has(x.value); });
-        count();
+        R.SKILLS.forEach((s) => {
+          const inp = f[`sk_${s.id}`]; if (inp.dataset.edited) return;
+          const v = R.startValue(s.kind, num(f[`a_${s.attr}`].value) || 10, f.profession.value === 'mage' && s.id === f.school.value);
+          inp.value = v || '';
+          inp.placeholder = String(v);
+        });
       };
-      const count = () => {
-        const n = f.querySelectorAll('[name=sk]:checked').length;
-        const age = R.AGE[f.age.value];
-        const mage = f.profession.value === 'mage';
-        f.querySelector('.skill-count').innerHTML = `<b>${n}</b> compétence${n > 1 ? 's' : ''} entraînée${n > 1 ? 's' : ''} · conseillé : 6 de la profession + ${age.free} au choix (${age.name.toLowerCase()}) = ${6 + age.free}${mage ? ' (l’école de magie en fait partie)' : ''}`;
-        const m = Object.entries(age.mods);
-        f.querySelector('.age-mods').textContent = m.length ? ` (${m.map(([k, v]) => `${k} ${v > 0 ? '+' : ''}${v}`).join(', ')})` : ' (aucun pour un adulte)';
-      };
-      f.profession.onchange = refresh; f.school.onchange = refresh; f.age.onchange = count;
-      picks.addEventListener('change', count);
-      f.querySelector('[data-roll-all]').onclick = () => R.ATTRS.forEach((a) => { f[`a_${a.key}`].value = rollAttr(); });
-      refresh();
+      R.SKILLS.forEach((s) => { f[`sk_${s.id}`].oninput = (e) => { e.target.dataset.edited = '1'; }; });
+      R.ATTRS.forEach((a) => { f[`a_${a.key}`].oninput = fill; });
+      f.profession.onchange = fill; f.school.onchange = fill;
+      // Capacité de la profession cochée d'office
+      const tick = () => { const pa = R.PROF[f.profession.value]?.ability; f.querySelectorAll('[name=h]').forEach((x) => { if (x.dataset.auto) { x.checked = false; delete x.dataset.auto; } if (pa && x.value === pa && !x.checked) { x.checked = true; x.dataset.auto = '1'; } }); };
+      f.profession.addEventListener('change', tick);
+      fill(); tick();
     },
   });
 }
