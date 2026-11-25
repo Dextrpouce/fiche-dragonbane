@@ -516,12 +516,12 @@ function viewGroupe(c) {
       <div class="group-notes"><h3>Notes du groupe <button class="icon-btn small" data-act="gNotes" aria-label="Modifier les notes">${icon('edit')}</button></h3>
         ${g.notes ? `<p class="small pre">${esc(g.notes)}</p>` : '<p class="small muted">Rendez-vous, promesses, rumeurs… touche le crayon.</p>'}</div>
     </section>
-    ${saleCard(g)}
     ${carriers}
     <section class="card span-all">
       <div class="add-row"><button class="btn ghost small" data-act="gAddCarrier">${icon('plus')} Ajouter une monture, un véhicule ou un coffre</button></div>
       <p class="small muted hint">Âne : 10 · cheval : 10 (plus son cavalier) · charrette : 50, tirée par un âne ou un cheval · chariot : 100, tiré par deux. Chaque sacoche de selle ajoute 2 à une monture.</p>
     </section>
+    ${saleCard(g)}
     ${shareCard()}
     <section class="card span-all journal">
       <h2>Journal</h2>
