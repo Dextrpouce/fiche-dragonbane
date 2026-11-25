@@ -576,7 +576,8 @@ nav.tabs button span { white-space: nowrap; }
 .purse-title { display: flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--font-title); font-size: 18px; color: #8a5d0c; margin-bottom: 6px; }
 .purse-title .i { width: 20px; height: 20px; }
 .purse-main .coin-big { background: rgba(255, 255, 255, .6); border-color: rgba(154, 108, 18, .35); }
-.acct-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.acct-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.acct-grid .purse-acct { flex: 1 1 240px; max-width: 290px; }
 .purse-acct { padding: 8px 10px 10px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255, 255, 255, .18); }
 .purse-acct.dette { border-color: rgba(179, 48, 42, .35); background: rgba(179, 48, 42, .05); }
 .purse-acct.creance { border-color: rgba(79, 122, 58, .35); }
