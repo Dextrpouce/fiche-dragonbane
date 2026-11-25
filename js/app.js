@@ -622,8 +622,10 @@ function shareCard() {
     <div class="mj-share">
       ${!sh.mj ? `<span class="small">Pas encore de meneur de jeu.</span><button class="btn small ghost" data-act="mjClaim">👑 Je suis le MJ</button>`
         : isMJ() ? `<span class="small">👑 <b>Tu es le MJ</b> : tu vois toutes les fiches (onglet MJ).</span><button class="btn small ghost" data-act="mjLeave">Ne plus être MJ</button>`
-        : `<span class="small">👑 MJ : <b>${esc(sh.mjName || '?')}</b>. Il voit vos fiches complètes, notes secrètes et journal perso compris.</span>`}
-      ${mjError ? `<p class="small bad">${esc(mjError)}</p>` : ''}
+        : `<span class="small">👑 MJ : <b>${esc(sh.mjName || '?')}</b>. Il voit vos fiches complètes, notes secrètes et journal perso compris.</span>
+          <p class="small mj-state ${mjError || !cloud.user() ? 'bad' : 'good'}">${!cloud.user() ? 'Connecte-toi (le nuage en haut) pour que le MJ reçoive ta fiche.'
+            : mjError ? esc(mjError) : mjOkAt ? `✓ Tes fiches sont à jour chez le MJ (${new Date(mjOkAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })})` : 'Envoi de tes fiches au MJ…'}
+            ${cloud.user() ? '<button class="btn small ghost" data-act="mjResend">Renvoyer mes fiches au MJ</button>' : ''}</p>`}
     </div>
   </section>`;
 }
@@ -1326,25 +1328,34 @@ let mjTimer = null; let mjError = ''; let mjFullKey = '';
 const mjErrText = (e) => (e?.code === 'permission-denied' ? 'Envoi au MJ refusé par Firebase : ajoute la règle « mj » (voir le manuel)' : e?.message || 'Erreur');
 // Images et croquis de mon journal perso (fiche) référencés par un personnage
 const mjMediaIds = (c) => [...(c.journal || []).map((s) => s.sketch), ...(c.npcs || []).map((n) => n.photo), ...(c.lieux || []).map((l) => l.photo)].filter(Boolean);
+let mjOkAt = 0; let mjRetry = null;
 async function mjSend(c) {
   const g = group.shared?.id;
-  if (!g || !group.shared.mj || !cloud.user() || !c) return;
+  if (!g || !group.shared.mj || !cloud.user() || !c) return false;
   try {
     if (mjSent.get(c.id) !== c.updatedAt) { await cloud.putMJPerso(g, c); mjSent.set(c.id, c.updatedAt); }
     for (const id of mjMediaIds(c)) {
       const m = store.sketch(id);
       if (m && mjSent.get(id) !== m.updatedAt) { await cloud.putMJMedia(g, m); mjSent.set(id, m.updatedAt); }
     }
-    mjError = '';
-  } catch (e) { mjError = mjErrText(e); }
+    mjError = ''; mjOkAt = Date.now();
+    return true;
+  } catch (e) { mjError = mjErrText(e); return false; }
 }
-function pushMJ(c) { clearTimeout(mjTimer); mjTimer = setTimeout(() => mjSend(c), 3000); }
+function pushMJ(c) { clearTimeout(mjTimer); mjTimer = setTimeout(async () => { if (!(await mjSend(c))) mjSync(true); }, 3000); }
 // Une fois par session (et à chaque changement de groupe ou de MJ) : toutes mes fiches
-function mjSync() {
+// En cas d'échec (hors ligne, règle Firebase pas encore en place…), on réessaie toutes les minutes.
+function mjSync(force = false) {
   const key = group.shared?.mj && cloud.user() ? `${group.shared.id}/${group.shared.mj}/${cloud.uid()}` : '';
-  if (!key || key === mjFullKey) return;
+  if (!key || (key === mjFullKey && !force)) return;
   mjFullKey = key;
-  (async () => { for (const c of store.list()) await mjSend(c); })();
+  (async () => {
+    let ok = true;
+    for (const c of store.list()) ok = (await mjSend(c)) && ok;
+    clearTimeout(mjRetry);
+    if (!ok) { mjFullKey = ''; mjRetry = setTimeout(() => mjSync(), 60000); }
+    if (ui.tab === 'groupe' && !dlg.open && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) render();
+  })();
 }
 
 // ----- Côté MJ : suivi en direct des fiches de chaque joueur -----
@@ -1361,7 +1372,13 @@ function mjWatch() {
       if (ui.mjView) { const fresh = list.find((x) => x.id === ui.mjView.id); if (fresh) ui.mjView = R.upgradeCharacter(fresh); }
       const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
       if (['mj'].includes(ui.tab) && !typing && !dlg.open) render();
-    }, (e) => { mjErr = e?.code === 'permission-denied' ? 'Lecture refusée par Firebase : ajoute la règle « mj » (voir le manuel)' : e.message; if (ui.tab === 'mj') render(); }));
+    }, (e) => {
+      // Un suivi refusé s'arrête définitivement : on l'oublie pour le relancer dans 30 s
+      mjWatches.delete(owner);
+      setTimeout(() => { if (isMJ()) mjWatch(); }, 30000);
+      mjErr = e?.code === 'permission-denied' ? 'Lecture refusée par Firebase : ajoute la règle « mj » (voir le manuel)' : e.message;
+      if (ui.tab === 'mj') render();
+    }));
   }
 }
 const MJ_SKILLS = ['vigilance', 'esquive', 'discretion', 'fouille', 'persuasion', 'bluff', 'soins'];
@@ -2571,6 +2588,7 @@ const A = {
   },
   mjClose() { ui.mjView = null; ui.tab = 'mj'; render(); window.scrollTo(0, 0); },
   mjPrivate(el) { mjPrivateDialog(el.dataset.u, el.dataset.id); },
+  mjResend() { mjSent.clear(); toast('Envoi de tes fiches au MJ…'); mjSync(true); },
   // Devenir MJ du groupe (ou céder la place)
   async mjClaim() {
     const sh = group.shared; if (!sh) return;
@@ -3221,9 +3239,11 @@ store.onStatus((st, info) => {
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
   if (info?.reloaded && !typing && !dlg.open) render();
   group.refresh();
+  mjSync();
 });
 // Groupe partagé : un autre joueur a modifié quelque chose
 group.onChange(() => {
+  mjSync(); // un MJ vient d'être désigné : envoyer mes fiches sans attendre
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
   if (['groupe', 'journal'].includes(ui.tab) && C() && !typing && !dlg.open && !document.querySelector('.sketch.full')) render();
 });
