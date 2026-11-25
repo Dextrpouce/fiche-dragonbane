@@ -518,7 +518,9 @@ nav.tabs button span { white-space: nowrap; }
 .log-amt { font-weight: 700; white-space: nowrap; font-variant-numeric: lining-nums; }
 .good { color: var(--green); }
 .carrier-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-.carrier-ico { font-size: 30px; line-height: 1; }
+.carrier-ico { line-height: 1; color: var(--red); display: flex; }
+.carrier-ico .i { width: 36px; height: 36px; stroke-width: 1.5; }
+.sale-main small .i { width: 16px; height: 16px; vertical-align: -3px; }
 .carrier-name { flex: 1; min-width: 0; }
 .carrier-name b { font-family: var(--font-title); font-weight: 400; font-size: 22px; color: var(--red); display: block; }
 .carrier-name small { color: var(--ink-soft); font-size: 14px; }

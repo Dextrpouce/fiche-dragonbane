@@ -13,6 +13,11 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const fmtDate = (t) => new Date(t).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' });
 
 const ICONS = {
+  charrette: '<path d="M2 7.5h13v5H2z"/><path d="M2 10h13"/><path d="M15 11.5l7-2.5"/><circle cx="8.5" cy="16.5" r="4"/><circle cx="8.5" cy="16.5" r="1"/><path d="M8.5 12.5v3M8.5 17.5v3M4.5 16.5h3M9.5 16.5h3"/>',
+  chariot: '<path d="M4 12V8.5C4 6 6 4.5 8 4.5h5c2 0 4 1.5 4 4V12"/><path d="M8.5 4.5V12M12.5 4.5V12"/><path d="M2.5 12h16v3h-16z"/><path d="M18.5 13.5l3.5-1"/><circle cx="6.5" cy="18.3" r="2.7"/><circle cx="15" cy="18.3" r="2.7"/><path d="M6.5 15.6v5.4M3.8 18.3h5.4M15 15.6v5.4M12.3 18.3h5.4"/>',
+  coffre: '<path d="M3 10h18v10H3z"/><path d="M3 10V8a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v2"/><path d="M7 4.3V20M17 4.3V20"/><path d="M10.5 9h3v4h-3z"/>',
+  barque: '<path d="M2 12.5h20c-1.2 3-3.5 5-6 5H8c-2.5 0-4.8-2-6-5z"/><path d="M5 5l11 15"/><path d="M15.5 17.5l2 3.2"/><path d="M7 12.5v-1.5h10v1.5"/>',
+  monture: '<path d="M8.5 21v-5.5c0-3.5 1-5.5 2.5-7L9.5 3l3 3.5L13.5 2.5l1.5 5.5c2.5 1.5 4.5 4 5 6.5l-1.5 2-2.5-.7-2 1.7V21"/><path d="M11 8.5c-1.5 1.5-2.5 3.5-2.5 5"/><circle cx="15.3" cy="11" r=".8" fill="currentColor"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.9.7c0 1.7-2.5 2.2-2.5 3.8"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/>',
   sheet: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7M9 9h3"/>',
   sword: '<path d="M20 4l-.6 3.4L10 16.8 7.2 14 16.6 4.6z"/><path d="M5.2 12.4l6.4 6.4"/><path d="M8.4 15.6 4.2 19.8"/><circle cx="3.6" cy="20.4" r=".9"/>',
@@ -407,7 +412,10 @@ function purseTake(m, amount) {
   return true;
 }
 const purseAdd = (m, coins) => { for (const k of ['or', 'argent', 'cuivre']) m[k] = (+m[k] || 0) + (+coins[k] || 0); };
-const carrierIcon = (k) => (R.CARRIER_TYPES[k.type]?.animal ? '🐴' : k.type === 'coffre' ? '🧰' : k.type === 'barque' ? '🛶' : '🛒');
+// Icône dessinée (cartes) et emoji (listes déroulantes, qui n'affichent que du texte)
+const carrierKind = (k) => (R.CARRIER_TYPES[k.type]?.animal ? 'monture' : k.type === 'coffre' ? 'coffre' : k.type === 'barque' ? 'barque' : k.type === 'chariot' ? 'chariot' : 'charrette');
+const carrierIcon = (k) => icon(carrierKind(k));
+const carrierEmoji = (k) => ({ monture: '🐴', coffre: '🧰', barque: '🛶' })[carrierKind(k)] || '🛞';
 const pullers = (g, v) => v.pulledBy.map((id) => g.carriers.find((k) => k.id === id)).filter(Boolean);
 const attachedTo = (g, a) => g.carriers.find((v) => v.pulledBy.includes(a.id));
 
@@ -567,7 +575,7 @@ function groupSellDialog(k, i) {
 
 function groupItemDialog(k, i) {
   const c = C(); const g = G(); const it = k.items[i];
-  const dests = [['', '— Ne pas déplacer —'], ...g.carriers.filter((x) => x.id !== k.id).map((x) => [`k:${x.id}`, `${carrierIcon(x)} ${x.name}`]), [`c:${c.id}`, `🎒 Sac de ${c.name}`]];
+  const dests = [['', '— Ne pas déplacer —'], ...g.carriers.filter((x) => x.id !== k.id).map((x) => [`k:${x.id}`, `${carrierEmoji(x)} ${x.name}`]), [`c:${c.id}`, `🎒 Sac de ${c.name}`]];
   openDialog({
     title: it.name,
     body: `<div class="fields">
@@ -1266,7 +1274,7 @@ function editItem(i) {
       ${F.area('notes', 'Notes', it.notes)}
       ${F.check('worn', 'Porté sur soi (ne compte pas : armure portée, vêtements…)', it.worn, 'full')}
       ${i < 0 ? buyCheck() : ''}
-      ${i >= 0 && store.group.carriers.length ? F.select('dest', 'Ranger dans le matériel du groupe', '', [['', '— Garder dans mon sac —'], ...store.group.carriers.map((k) => [k.id, `${carrierIcon(k)} ${k.name}`])], 'full') : ''}
+      ${i >= 0 && store.group.carriers.length ? F.select('dest', 'Ranger dans le matériel du groupe', '', [['', '— Garder dans mon sac —'], ...store.group.carriers.map((k) => [k.id, `${carrierEmoji(k)} ${k.name}`])], 'full') : ''}
     </div>`,
     actions: [
       ...(i >= 0 ? [{ label: icon('trash'), cls: 'ghost', onClick: () => { c.items.splice(i, 1); commit(); } }, 'spacer'] : []),
