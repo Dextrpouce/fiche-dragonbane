@@ -1322,11 +1322,16 @@ function viewCarnet(c) {
     </section>
     <section class="card">
       <h2>Personnalité</h2>
-      <div class="fields">
+      ${ui.mode === 'normal' ? `<div class="fields">
+        <div class="field full"><label>Faiblesse</label><div class="ro ro-text">${esc(c.weakness || '—')}</div></div>
+        <div class="field full"><label>Apparence</label><div class="ro ro-text">${esc(c.appearance || '—')}</div></div>
+        <div class="field full"><label>Souvenir</label><div class="ro ro-text">${esc(c.memento || '—')}</div></div>
+      </div>
+      ${ui.guest || ui.mjView ? '' : `<p class="small muted hint">Passe en mode <b>Libre</b> ou <b>Progression</b> pour modifier la personnalité. <button class="btn small ghost" data-act="setMode" data-m="libre">Mode libre</button></p>`}` : `<div class="fields">
         <div class="field full"><label>Faiblesse</label>${bind('weakness', c.weakness, 'area', 'rows="2"')}</div>
         <div class="field full"><label>Apparence</label>${bind('appearance', c.appearance, 'area', 'rows="2"')}</div>
         <div class="field full"><label>Souvenir</label>${bind('memento', c.memento)}</div>
-      </div>
+      </div>`}
     </section>
     <section class="card">
       <h2>Compagnons et relations</h2>

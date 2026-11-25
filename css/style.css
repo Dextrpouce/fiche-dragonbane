@@ -836,3 +836,4 @@ body.no-scroll { overflow: hidden; }
 .pick-group .menu-list { gap: 4px; }
 .share-btns { display: flex; gap: 6px; flex-wrap: wrap; }
 .pick-add { border: 1px dashed var(--line) !important; background: none !important; color: var(--ink-soft); justify-content: center; font-size: 13px; }
+.ro.ro-text { white-space: pre-line; }
