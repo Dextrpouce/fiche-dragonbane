@@ -1322,13 +1322,14 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
     const canPush = !noPush && r && !r.success && !r.demon && !st.pushed && free.length;
     const verdict = !r ? '' : r.dragon ? '<div class="verdict dragon">Dragon !</div>' : r.demon ? '<div class="verdict demon">Démon !</div>'
       : r.success ? '<div class="verdict ok">Réussite</div>' : '<div class="verdict ko">Échec</div>';
+    const lock = once && r ? 'disabled' : '';
     dlg.innerHTML = `<div class="card roll">
       <h2>${esc(title)}</h2>
       <div class="roll-target">Réussite sur <b>${target}</b> ou moins</div>
       ${note ? `<p class="small muted center">${note}</p>` : ''}
       <div class="bb">
-        <div class="bb-col"><span>Avantages</span><div class="step"><button data-r="boon" data-d="-1">−</button><span class="val">${st.boons}</span><button data-r="boon" data-d="1">+</button></div></div>
-        <div class="bb-col"><span>Désavantages</span><div class="step"><button data-r="bane" data-d="-1">−</button><span class="val">${st.banes}</span><button data-r="bane" data-d="1">+</button></div></div>
+        <div class="bb-col"><span>Avantages</span><div class="step"><button data-r="boon" data-d="-1" ${lock}>−</button><span class="val">${st.boons}</span><button data-r="boon" data-d="1" ${lock}>+</button></div></div>
+        <div class="bb-col"><span>Désavantages</span><div class="step"><button data-r="bane" data-d="-1" ${lock}>−</button><span class="val">${st.banes}</span><button data-r="bane" data-d="1" ${lock}>+</button></div></div>
       </div>
       ${boosts.length ? `<p class="small center boon">Avantage : ${esc(boosts.join(', '))}</p>` : ''}
       ${reasons.length ? `<p class="small center bad">Désavantage : ${esc(reasons.join(', '))}</p>` : ''}
@@ -1369,8 +1370,14 @@ function openRoll({ title, target, attr = null, skill = null, weapon = null, onR
     if (!b) return;
     const k = b.dataset.r;
     if (k === 'close') { dlg.close(); render(); return; }
-    if (k === 'boon') st.boons = Math.max(0, st.boons + +b.dataset.d);
-    if (k === 'bane') st.banes = Math.max(0, st.banes + +b.dataset.d);
+    if (k === 'boon' || k === 'bane') {
+      // Jet unique déjà compté (jet de mort) : on ne change plus rien
+      if (once && st.res) return;
+      if (k === 'boon') st.boons = Math.max(0, st.boons + +b.dataset.d);
+      else st.banes = Math.max(0, st.banes + +b.dataset.d);
+      // Changer avantages ou désavantages oublie le jet précédent : on revient à l'aperçu des dés
+      st.res = null; st.dmg = null; st.msg = ''; st.pushed = false;
+    }
     if (k === 'roll') { st.pushed = false; roll(); }
     if (k === 'push') {
       c.conditions[b.dataset.k] = true; st.pushed = true;
