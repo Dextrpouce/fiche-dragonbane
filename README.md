@@ -108,7 +108,7 @@ Un joueur peut **prêter** son personnage au groupe partagé (« Mes personnages
 
 ## Crédits
 
-- Pictogrammes des montures et véhicules : [game-icons.net](https://game-icons.net), licence [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) — *donkey* et *mounted-knight* par Skoll, *horse-head*, *old-wagon* et *wood-canoe* par Delapouite, *cartwheel*, *locked-chest* et *knapsack* par Lorc. Tracés repris tels quels, recolorés.
+- Pictogrammes des montures et véhicules : [game-icons.net](https://game-icons.net), licence [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) — *donkey* et *mounted-knight* par Skoll, *horse-head*, *old-wagon* et *wood-canoe* par Delapouite, *cartwheel*, *locked-chest* et *knapsack* par Lorc ; Dragon et Démon des jets de mort : *dragon-head* et *daemon-skull* par Lorc. Tracés repris tels quels, recolorés.
 
 ## Tester sur ton PC
 
