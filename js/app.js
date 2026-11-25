@@ -39,6 +39,7 @@ const ICONS = {
   quill: '<path d="M20 3C11 4 6 10 5 19"/><path d="M20 3c-1 6-5 10-11 11"/><path d="M4 21l2-3"/>',
   eraser: '<path d="M8 20h12"/><path d="M4.5 15.5l9-9a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8z"/><path d="M9 11l5 5"/>',
   expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   check: '<path d="M5 12l5 5L20 7"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>',
@@ -309,20 +310,27 @@ function readPortrait(file, maxW = 600, maxH = 800, maxLen = 270000) {
     img.src = url;
   });
 }
-function pickPortrait() {
-  const c = C(); if (!c) return;
+// Téléphone ou tablette : on propose aussi l'appareil photo (sur ordinateur, seulement le choix de fichier)
+const canCamera = () => matchMedia('(pointer: coarse)').matches;
+// Ouvre l'appareil photo (camera = true) ou la galerie / les fichiers, et rend le fichier choisi
+function chooseImage(camera, onFile) {
   const inp = document.createElement('input');
   inp.type = 'file'; inp.accept = 'image/*';
-  inp.onchange = async () => {
-    const f = inp.files[0]; if (!f) return;
-    try { c.portrait = await readPortrait(f); commit(); toast('Portrait ajouté'); } catch (e) { toast(e.message || 'Image illisible'); }
-  };
+  if (camera) inp.setAttribute('capture', 'environment');
+  inp.onchange = () => { const f = inp.files[0]; if (f) onFile(f); };
   inp.click();
+}
+function pickPortrait(camera = false) {
+  const c = C(); if (!c) return;
+  chooseImage(camera, async (f) => {
+    try { c.portrait = await readPortrait(f); commit(); toast('Portrait ajouté'); } catch (e) { toast(e.message || 'Image illisible'); }
+  });
 }
 function portraitCard(c) {
   if (!c.portrait) {
     return `<section class="card portrait-card empty-portrait">
-      <button class="btn ghost small" data-act="portraitPick">${icon('plus')} Ajouter un portrait</button>
+      ${canCamera() ? `<button class="btn ghost small" data-act="portraitPick" data-cam="1">${icon('camera')} Prendre une photo</button>` : ''}
+      <button class="btn ghost small" data-act="portraitPick">${icon('plus')} ${canCamera() ? 'Choisir une image' : 'Ajouter un portrait'}</button>
     </section>`;
   }
   return `<section class="card portrait-card">
@@ -1300,7 +1308,9 @@ const J_FIELDS = [['places', 'Lieux', 'Villages, ruines, chemins…', 3], ['loot
 const NPC_ATT = { ami: ['Allié', 'good'], neutre: ['Neutre', ''], hostile: ['Hostile', 'bad'], inconnu: ['Inconnu', 'muted'] };
 const npcOf = (c, id) => c.npcs.find((n) => n.id === id);
 const npcSessions = (c, id) => c.journal.filter((s) => (s.npcIds || []).includes(id)).sort((a, b) => a.n - b.n);
-const npcFace = (n, cls = '') => (n.portrait ? `<span class="npc-face ${cls}" style="background-image:url('${n.portrait}')"></span>`
+// Image d'un PNJ : rangée à part de la fiche (comme les croquis) ; les anciennes vignettes restaient dans la fiche
+const npcImg = (n) => (n.photo && store.sketch(n.photo)?.image) || n.portrait || '';
+const npcFace = (n, cls = '') => (npcImg(n) ? `<span class="npc-face ${cls}" style="background-image:url('${npcImg(n)}')"></span>`
   : `<span class="npc-face ${cls} initial">${esc((n.name || '?').trim().charAt(0).toUpperCase())}</span>`);
 function npcCards(c) {
   if (!c.npcs.length) return '<div class="empty">Aucun PNJ pour l’instant. Crée-les ici ou depuis une session (« PNJ rencontrés »).</div>';
@@ -1323,12 +1333,19 @@ function npcCards(c) {
 function npcDialog(npc, linkTo = null) {
   const c = C(); const isNew = !npc;
   const cur = npc ? { ...npc } : { name: '', role: '', place: '', attitude: 'inconnu', notes: '', portrait: '' };
+  const img = npc ? npcImg(npc) : '';
   const seen = npc ? npcSessions(c, npc.id) : [];
   openDialog({
     title: isNew ? 'Nouveau PNJ' : cur.name,
     cls: 'npc-dlg',
     body: `<div class="npc-dlg-top">
-        <button type="button" class="npc-photo" data-npc-photo title="Choisir une image">${cur.portrait ? `<img src="${cur.portrait}" alt="">` : `<span>${icon('plus')}<small>Image</small></span>`}</button>
+        <div class="npc-photo-col">
+          <button type="button" class="npc-photo" data-npc-photo title="${img ? 'Voir en grand' : 'Ajouter une image'}">${img ? `<img src="${img}" alt="">` : `<span>${icon('plus')}<small>Image</small></span>`}</button>
+          <div class="npc-photo-btns">
+            ${canCamera() ? `<button type="button" class="btn small ghost" data-npc-pick="cam" title="Prendre une photo">${icon('camera')}</button>` : ''}
+            <button type="button" class="btn small ghost" data-npc-pick="file" title="Choisir une image">${icon('plus')}</button>
+          </div>
+        </div>
         <div class="fields">
           ${F.text('name', 'Nom', cur.name, 'full', 'autofocus placeholder="Ex. Maître Ulwar"')}
           ${F.text('role', 'Rôle, métier', cur.role, 'full', 'placeholder="Ex. Charpentier, chef du village…"')}
@@ -1340,10 +1357,12 @@ function npcDialog(npc, linkTo = null) {
         ${F.area('notes', 'Notes', cur.notes)}
       </div>
       ${seen.length ? `<p class="small muted">Rencontré : ${seen.map((s) => `Session ${s.n}${s.title ? ` (${esc(s.title)})` : ''}`).join(', ')}</p>` : ''}
-      ${cur.portrait ? '<label class="check"><input type="checkbox" name="noPhoto"><span>Retirer l’image</span></label>' : ''}`,
+      ${img ? '<label class="check"><input type="checkbox" name="noPhoto"><span>Retirer l’image</span></label>' : ''}
+      <div class="npc-zoom" hidden><img alt=""><small>Touche pour fermer</small></div>`,
     actions: [
       ...(!isNew ? [{ label: icon('trash'), cls: 'ghost', onClick: () => {
         setTimeout(() => confirmDialog('Supprimer le PNJ', `Supprimer la fiche de ${esc(npc.name)} ? Il sera retiré des sessions où il apparaît.`, 'Supprimer', () => {
+          if (npc.photo) store.removeSketch(npc.photo);
           c.npcs = c.npcs.filter((x) => x.id !== npc.id);
           c.journal.forEach((s) => { s.npcIds = (s.npcIds || []).filter((id) => id !== npc.id); });
           commit();
@@ -1353,8 +1372,16 @@ function npcDialog(npc, linkTo = null) {
       { label: 'Enregistrer', primary: true, onClick: (f) => {
         const name = f.name.value.trim();
         if (!name) { toast('Donne un nom au PNJ'); return false; }
-        const v = { name, role: f.role.value.trim(), place: f.place.value.trim(), attitude: f.attitude.value, notes: f.notes.value.trim(),
-          portrait: f.noPhoto?.checked ? '' : (f.dataset.photo ?? cur.portrait ?? '') };
+        const v = { name, role: f.role.value.trim(), place: f.place.value.trim(), attitude: f.attitude.value, notes: f.notes.value.trim() };
+        if (f.noPhoto?.checked) {
+          if (cur.photo) store.removeSketch(cur.photo);
+          Object.assign(v, { photo: null, portrait: '' });
+        } else if (f.dataset.photo) {
+          // Nouvelle image : enregistrée à part (un document en ligne), la fiche ne garde que son identifiant
+          const id = cur.photo || R.uid();
+          store.saveSketch({ id, cid: c.id, image: f.dataset.photo });
+          Object.assign(v, { photo: id, portrait: '' });
+        }
         if (isNew) {
           const n = { id: R.uid(), ...v }; c.npcs.push(n);
           if (linkTo) (linkTo.npcIds ||= []).push(n.id);
@@ -1363,17 +1390,21 @@ function npcDialog(npc, linkTo = null) {
       } },
     ],
     onOpen: (f) => {
+      const pick = (camera) => chooseImage(camera, async (file) => {
+        try {
+          f.dataset.photo = await readPortrait(file, 720, 900, 140000); // assez grande pour voir l'illustration du MJ
+          f.querySelector('[data-npc-photo]').innerHTML = `<img src="${f.dataset.photo}" alt="">`;
+        } catch (e) { toast(e.message || 'Image illisible'); }
+      });
+      f.querySelectorAll('[data-npc-pick]').forEach((b) => { b.onclick = () => pick(b.dataset.npcPick === 'cam'); });
+      // Toucher l'image : la voir en grand (ou en choisir une s'il n'y en a pas)
+      const zoom = f.querySelector('.npc-zoom');
       f.querySelector('[data-npc-photo]').onclick = () => {
-        const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
-        inp.onchange = async () => {
-          const file = inp.files[0]; if (!file) return;
-          try {
-            f.dataset.photo = await readPortrait(file, 240, 240, 40000); // petite vignette : la fiche reste légère
-            f.querySelector('[data-npc-photo]').innerHTML = `<img src="${f.dataset.photo}" alt="">`;
-          } catch (e) { toast(e.message || 'Image illisible'); }
-        };
-        inp.click();
+        const src = f.dataset.photo || img;
+        if (!src) { pick(canCamera()); return; }
+        zoom.querySelector('img').src = src; zoom.hidden = false;
       };
+      zoom.onclick = () => { zoom.hidden = true; };
     },
   });
 }
@@ -2220,7 +2251,7 @@ const A = {
     w.classList.toggle('full', on); document.body.classList.toggle('no-scroll', on);
     sketchCtl?.resize();
   },
-  portraitPick() { pickPortrait(); },
+  portraitPick(el) { pickPortrait(!!el?.dataset.cam); },
   portraitView() {
     const c = C(); if (!c?.portrait) return;
     openDialog({
@@ -2230,6 +2261,7 @@ const A = {
       actions: [
         { label: icon('trash'), cls: 'ghost', onClick: () => { setTimeout(() => confirmDialog('Retirer le portrait', 'Retirer l’image de ce personnage ?', 'Retirer', () => { delete c.portrait; commit(); })); } },
         'spacer', closeBtn,
+        ...(canCamera() ? [{ label: `${icon('camera')} Photo`, cls: 'ghost', onClick: () => { pickPortrait(true); } }] : []),
         { label: 'Changer l’image', primary: true, onClick: () => { pickPortrait(); } },
       ],
     });

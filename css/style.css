@@ -735,3 +735,13 @@ body.no-scroll { overflow: hidden; }
 .npc-photo img { width: 100%; height: 100%; object-fit: cover; object-position: center 20%; }
 .npc-photo span { display: flex; flex-direction: column; align-items: center; font-size: 12px; }
 @media (min-width: 720px) { .j-fields { grid-template-columns: 1fr 1fr; } }
+/* Photo ou image (appareil photo sur mobile) */
+.portrait-card.empty-portrait { gap: 8px; flex-wrap: wrap; }
+.npc-photo-col { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.npc-photo { width: 104px; height: 130px; border-radius: 12px; }
+.npc-photo-btns { display: flex; gap: 6px; }
+.npc-photo-btns .btn { padding: 4px 10px; min-height: 0; }
+.npc-zoom { position: fixed; inset: 0; z-index: 60; background: rgba(10, 14, 12, .92); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; cursor: zoom-out; }
+.npc-zoom[hidden] { display: none; }
+.npc-zoom img { max-width: 94vw; max-height: 86vh; border-radius: 10px; box-shadow: 0 6px 30px #000a; }
+.npc-zoom small { color: #e8dcc0; }

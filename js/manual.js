@@ -22,7 +22,7 @@ export const MANUAL = [
   ['Fiche', `
     <p>Tes attributs, compétences et capacités. En haut, le résumé : PV, PVol, déplacement, bonus aux dégâts et charge.</p>
     <p>Sous chaque attribut, l’étiquette de son <b>état</b> (Épuisé, Malade, Étourdi…) : touche-la pour le mettre ou l’enlever, elle passe en rouge. Le reste de la case lance le dé.</p>
-    <p><b>Portrait</b> : « Ajouter un portrait » sous les attributs pour choisir une image (photo, dessin…). Elle s’affiche aussi dans l’hexagone en haut. Touche-la pour l’agrandir, la changer ou la retirer. L’image est réduite pour rester légère dans la sauvegarde.</p>
+    <p><b>Portrait</b> : sous les attributs, choisis une image (photo, dessin…) ou, sur téléphone, « Prendre une photo ». Elle s’affiche aussi dans l’hexagone en haut. Touche-la pour l’agrandir, la changer ou la retirer. L’image est réduite pour rester légère dans la sauvegarde.</p>
     <p>Les boutons au-dessus des compétences filtrent la liste : toutes, entraînées, armes ou cochées ✦.</p>`],
   ['Combat', `
     <p>Tout ce qu’il faut pendant un combat, sans rien modifier par erreur :</p>
@@ -55,7 +55,7 @@ export const MANUAL = [
     <p>Identité, faiblesse, apparence, souvenir, compagnons et notes libres. L’identité se modifie en mode libre.</p>`],
   ['Journal', `
     <p>Une page par séance : « Nouvelle session » crée la page du jour, numérotée. Donne-lui un titre, puis remplis ce que tu veux : <b>Résumé</b>, <b>PNJ rencontrés</b>, <b>Lieux</b>, <b>Butin</b>.</p>
-    <p><b>PNJ</b> : dans une session, tape le nom d’un PNJ et touche + : s’il existe déjà, il est relié à la session, sinon sa fiche est créée. Touche son nom pour compléter sa fiche (image, rôle, attitude, où le trouver, notes). L’onglet « PNJ » du journal montre toutes les fiches, avec les sessions où vous les avez croisés.</p>
+    <p><b>PNJ</b> : dans une session, tape le nom d’un PNJ et touche + : s’il existe déjà, il est relié à la session, sinon sa fiche est créée. Touche son nom pour compléter sa fiche (image, rôle, attitude, où le trouver, notes). Sur téléphone ou tablette, le bouton 📷 prend directement en photo l’illustration du MJ ; touche l’image pour la voir en grand. L’onglet « PNJ » du journal montre toutes les fiches, avec les sessions où vous les avez croisés.</p>
     <p><b>Pistes</b> : ajoute les choses à faire ; celles qui ne sont pas cochées restent en haut du journal (« Pistes en cours »), quelle que soit la session.</p>
     <p><b>Croquis</b> : « Ajouter une page de croquis » ouvre une feuille pour dessiner au stylet, au doigt ou à la souris (plans, cartes…). Trois couleurs, gomme, annuler, tout effacer et <b>Plein écran</b> (une nouvelle page s’ouvre directement en plein écran). Avec un stylet, la paume posée sur l’écran ne dessine pas et la pression épaissit le trait.</p>
     <p>Sur iPad avec l’Apple Pencil, tu peux écrire à la main directement dans les champs de texte : l’iPad transforme l’écriture en texte. Sur Android, utilise le mode écriture manuscrite du clavier. La recherche fouille tout le journal.</p>`],
