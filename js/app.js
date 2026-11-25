@@ -24,8 +24,9 @@ function linkChar(gid) {
 }
 function setMjActive(on) { ui.mjActive = !!on; localStorage.setItem('dragonbane.mjActive', on ? '1' : '0'); }
 // MJ sans personnage à lui : une fiche vide en mémoire (jamais enregistrée), pour que l'appli fonctionne
-const mjStub = () => (mjStubObj ||= Object.assign(R.upgradeCharacter(R.newCharacter({ name: 'Meneur de jeu' })), { id: '__mj', stub: true }));
-const C = () => ui.mjView || ui.guest || (ui.mjActive && isMJ() ? mjStub() : null) || store.current() || (isMJ() ? mjStub() : null);
+const mjStub = () => { mjStubObj ||= Object.assign(R.upgradeCharacter(R.newCharacter({ name: 'Meneur de jeu' })), { id: '__mj', stub: true }); mjStubObj.name = isMJ() ? 'Meneur de jeu' : 'Sans personnage'; return mjStubObj; };
+// ui.mjActive : dans le groupe affiché sans personnage (MJ, ou ancien MJ qui y reste membre)
+const C = () => ui.mjView || ui.guest || (ui.mjActive && group.shared ? mjStub() : null) || store.current() || (isMJ() ? mjStub() : null);
 const num = (v) => (v === '' || v == null || isNaN(+v) ? 0 : +v);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const fmtDate = (t) => new Date(t).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' });
@@ -269,7 +270,7 @@ function render() {
   if (ui.tab === 'magie' && !R.isCaster(c)) ui.tab = 'fiche';
   if ((ui.guest || ui.mjView) && ui.mode !== 'normal') ui.mode = 'normal'; // personnage prêté ou vu par le MJ : ni mode libre ni progression
   if (ui.tab === 'mj' && !isMJ()) ui.tab = 'fiche';
-  if (c.stub && !['mj', 'journal', 'groupe', 'biblio'].includes(ui.tab)) ui.tab = 'mj';
+  if (c.stub && !['mj', 'journal', 'groupe', 'biblio'].includes(ui.tab)) ui.tab = isMJ() ? 'mj' : 'groupe';
   watchLent(); mjSync(); mjWatch();
   const y = window.scrollY;
   const marked = c.skills.filter((s) => s.mark).length;
@@ -291,7 +292,7 @@ function render() {
 function topbar(c) {
   if (c.stub) {
     return `<header class="topbar">
-    <button class="who" data-act="characters" aria-label="Mes personnages"><span class="crest">👑</span><span class="who-txt"><div class="who-name">Meneur de jeu</div><div class="who-sub">${esc(group.shared?.name || '')}</div></span></button>
+    <button class="who" data-act="characters" aria-label="Mes personnages"><span class="crest">${isMJ() ? "👑" : "?"}</span><span class="who-txt"><div class="who-name">${isMJ() ? "Meneur de jeu" : "Sans personnage"}</div><div class="who-sub">${esc(group.shared?.name || '')}</div></span></button>
     <button class="icon-btn" data-act="manual" aria-label="Manuel d’utilisation">${icon('help')}</button>
     ${syncButton()}
     <button class="icon-btn" data-act="menu" aria-label="Menu">${icon('dots')}</button>
@@ -575,7 +576,7 @@ function combatAbilities(c) {
 // Les données passent par group.js : chaque modification est une opération notée au journal (qui, quoi),
 // partagée en direct si le groupe est partagé.
 const G = () => group.state;
-const author = () => (C()?.stub ? `MJ (${group.shared?.mjName || 'MJ'})` : ui.guest ? `${ui.guest.name} (joué par ${store.current()?.name || 'un joueur'})` : C()?.name || store.userEmail || 'Joueur');
+const author = () => (C()?.stub ? (isMJ() ? `MJ (${group.shared?.mjName || 'MJ'})` : ownerName()) : ui.guest ? `${ui.guest.name} (joué par ${store.current()?.name || 'un joueur'})` : C()?.name || store.userEmail || 'Joueur');
 // Applique une opération du groupe ; false (et message) si elle est impossible
 function gApply(op, okMsg = '') {
   try {
@@ -644,6 +645,7 @@ function shareCard() {
       <span class="share-btns"><button class="btn small ghost" data-act="gShareCode">${icon('users')} Inviter</button><button class="btn small ghost" data-act="gLeave">Quitter le groupe</button></span></div>
     ${members.length ? `<p class="small muted">Membres : ${members.map(esc).join(', ')}</p>` : ''}
     ${status}
+    ${C()?.stub && !isMJ() ? `<p class="small">Tu es dans ce groupe <b>sans personnage</b>.<button class="btn small" data-act="gNewHere">${icon('plus')} Créer mon personnage dans ce groupe</button></p>` : ''}
     <div class="mj-share">
       ${!sh.mj ? `<span class="small">Pas encore de meneur de jeu.${isAdmin() ? '' : ' L’administrateur du groupe peut créer un code MJ.'}</span>${isAdmin() ? '<button class="btn small ghost" data-act="mjClaim">👑 Je serai le MJ</button>' : ''}`
         : isMJ() ? `<span class="small">👑 <b>Tu es le MJ</b> : tu vois toutes les fiches (onglet MJ).</span><button class="btn small ghost" data-act="mjLeave">Ne plus être MJ</button>`
@@ -2777,7 +2779,14 @@ const A = {
   async mjLeave() {
     const sh = group.shared; if (!sh || !isMJ()) return;
     confirmDialog('Ne plus être MJ', 'Tu ne verras plus les fiches des joueurs. Un autre membre pourra devenir MJ.', 'Ne plus être MJ', async () => {
-      try { await cloud.setGroupMJ(sh.id, '', ''); ui.mjView = null; if (ui.tab === 'mj') ui.tab = 'fiche'; toast('Tu n’es plus le MJ'); } catch (e) { toast(e.message); }
+      try {
+        await cloud.setGroupMJ(sh.id, '', '');
+        sh.mj = ''; sh.mjName = ''; ui.mjView = null;
+        // On reste dans le groupe : avec mon personnage de ce groupe s'il y en a un, sinon sans personnage
+        const mine = store.list().find((x) => x.groupId === sh.id);
+        if (mine) { setMjActive(false); store.select(mine.id); } else setMjActive(true);
+        ui.tab = 'groupe'; render(); toast('Tu n’es plus le MJ : tu restes dans le groupe');
+      } catch (e) { toast(e.message); }
     });
   },
   modeMenu() {
@@ -3193,6 +3202,8 @@ const A = {
   gShareCreate() { shareCreateDialog(); },
   gShareJoin() { shareJoinDialog(); },
   gShareCode() { shareCodeDialog(); },
+  // Membre du groupe sans personnage : en créer un qui en fait partie
+  gNewHere() { if (group.shared) { ui.newInGroup = group.shared.id; creationDialog(); } },
   // Personnage sans groupe : rejoindre un de mes groupes déjà connus (sans code)
   gJoinKnown(el) {
     const r = group.list.find((x) => x.id === el.dataset.id); if (!r) return;
@@ -3202,11 +3213,18 @@ const A = {
   gLeave() {
     const sh = group.shared; if (!sh) return;
     const c = C(); const asMJ = !!c?.stub;
-    const text = asMJ ? `Quitter « ${esc(sh.name)} » ? Tu ne seras plus son MJ.`
-      : `<b>${esc(c?.name || 'Ton personnage')}</b> quittera « ${esc(sh.name)} » et repassera sans groupe. Tu pourras revenir avec le code <b>${esc(sh.id)}</b>.`;
-    confirmDialog('Quitter le groupe', text, 'Quitter', async () => {
+    // Le compte quitte vraiment le groupe ? (sinon un autre de mes personnages y joue, ou j'en reste le MJ)
+    const leaves = asMJ || (!store.list().some((x) => x.groupId === sh.id && x.id !== c?.id) && !isMJ());
+    const others = Object.entries(sh.members || {}).filter(([u]) => u !== cloud.uid());
+    const pickOwner = leaves && isAdmin() && others.length;
+    const def = others.find(([u]) => u === sh.mj)?.[0] || others[0]?.[0];
+    const text = (asMJ ? `Quitter « ${esc(sh.name)} » ?${isMJ() ? ' Tu ne seras plus son MJ.' : ''}`
+      : `<b>${esc(c?.name || 'Ton personnage')}</b> quittera « ${esc(sh.name)} » et repassera sans groupe. Tu pourras revenir avec le code <b>${esc(sh.id)}</b>.`)
+      + (pickOwner ? `</p><p class="small">🔑 Tu es l’administrateur : qui le devient à ta place (code MJ, « Je serai le MJ ») ?</p><p><select name="owner">${others.map(([u, n]) => `<option value="${esc(u)}" ${u === def ? 'selected' : ''}>${esc(n || 'Membre')}${u === sh.mj ? ' (MJ)' : ''}</option>`).join('')}</select>` : '');
+    confirmDialog('Quitter le groupe', text, 'Quitter', async (f) => {
       try {
-        if (asMJ) { await cloud.setGroupMJ(sh.id, '', '').catch(() => {}); setMjActive(false); await group.leave(); render(); toast('Groupe quitté'); return; }
+        if (pickOwner && f?.owner?.value) await cloud.setGroupOwner(sh.id, f.owner.value).catch(() => {});
+        if (asMJ) { if (isMJ()) await cloud.setGroupMJ(sh.id, '', '').catch(() => {}); setMjActive(false); await group.leave(); render(); toast('Groupe quitté'); return; }
         if (c && !ui.guest && !ui.mjView) {
           if (lentHere(c)) { group.apply({ t: 'p:unlend', id: c.id }, c.name); cloud.deletePerso(sh.id, c.id).catch(() => {}); }
           delete c.lentTo; delete c.groupId; c.updatedAt = Date.now(); store.save();

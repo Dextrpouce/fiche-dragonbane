@@ -178,7 +178,8 @@ export function watchGroup(id, onData, onError) {
   return fb.onSnapshot(groupDoc(id), (snap) => {
     if (!snap.exists()) { onError?.(new Error('Groupe introuvable')); return; }
     const d = snap.data();
-    onData({ id, name: d.name, members: d.memberNames || {}, owner: d.owner || d.members?.[0] || '', mj: d.mj || '', mjName: d.mjName || '', state: JSON.parse(d.json || '{}'), updatedAt: d.updatedAt || 0 });
+    // Administrateur parti sans successeur : le plus ancien membre le devient
+    onData({ id, name: d.name, members: d.memberNames || {}, owner: (d.owner && (d.members || []).includes(d.owner) ? d.owner : d.members?.[0]) || '', mj: d.mj || '', mjName: d.mjName || '', state: JSON.parse(d.json || '{}'), updatedAt: d.updatedAt || 0 });
   }, (e) => onError?.(e));
 }
 
@@ -245,6 +246,8 @@ export async function redeemMJInvite(code) {
   if (d.revoked) throw new Error('Ce code MJ n’est plus valable : demandes-en un nouveau à l’administrateur du groupe');
   return d.group;
 }
+// Nouvel administrateur du groupe (l'ancien s'en va)
+export async function setGroupOwner(g, uid) { who(); await fb.updateDoc(groupDoc(g), { owner: uid }); }
 export async function setGroupMJ(g, mjUid, mjName) {
   who();
   await fb.updateDoc(groupDoc(g), { mj: mjUid || '', mjName: mjName || '' });
