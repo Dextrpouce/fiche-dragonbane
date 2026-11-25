@@ -478,13 +478,17 @@ function viewCombat(c) {
   const death = c.hp.cur <= 0 ? `<section class="card death span-all">
       <h2>Jets de mort</h2>
       <p class="small">À 0 PV, lance un jet de <b>CON</b> à chaque tour. Trois réussites : tu es hors de danger. Trois échecs : ton personnage meurt.</p>
-      <div class="death-row"><span>Réussites</span>${[0, 1, 2].map((i) => `<i class="pip ok ${i < c.death.succ ? 'on' : ''}"></i>`).join('')}</div>
-      <div class="death-row"><span>Échecs</span>${[0, 1, 2].map((i) => `<i class="pip ko ${i < c.death.fail ? 'on' : ''}"></i>`).join('')}</div>
+      ${(() => {
+        // Avec ses propres dés : le résultat se note directement à côté des cases
+        const open = c.death.fail < 3 && c.death.succ < 3;
+        const btn = (r, label, cls = '') => (open ? `<button class="btn small ghost ${cls}" data-act="deathReal" data-r="${r}">${label}</button>` : '');
+        return `<div class="death-grid">
+          <span class="death-lbl">Réussites</span><span class="death-pips">${[0, 1, 2].map((i) => `<i class="pip ok ${i < c.death.succ ? 'on' : ''}"></i>`).join('')}</span>${btn('ok', '✓ Réussite')}${btn('dragon', 'Dragon (1)', 'dragon-btn')}
+          <span class="death-lbl">Échecs</span><span class="death-pips">${[0, 1, 2].map((i) => `<i class="pip ko ${i < c.death.fail ? 'on' : ''}"></i>`).join('')}</span>${btn('ko', '✗ Échec')}${btn('demon', 'Démon (20)', 'demon-btn')}
+        </div>`;
+      })()}
       ${c.death.fail >= 3 ? '<p class="verdict demon">Ton personnage est mort.</p>' : c.death.succ >= 3 ? '<p class="verdict dragon">Hors de danger.</p>' : ''}
       <div class="add-row"><button class="btn" data-act="deathRoll" ${c.death.fail >= 3 || c.death.succ >= 3 ? 'disabled' : ''}>${icon('d20')} Jet de mort (CON ${c.attrs.CON})</button><button class="btn ghost small" data-act="deathReset">Remettre à zéro</button></div>
-      ${c.death.fail >= 3 || c.death.succ >= 3 ? '' : `<div class="death-real"><span class="small muted">Avec tes dés (D20 ≤ ${c.attrs.CON}) :</span>
-        <button class="btn small ghost" data-act="deathReal" data-r="ok">✓ Réussite</button><button class="btn small ghost" data-act="deathReal" data-r="ko">✗ Échec</button>
-        <button class="btn small ghost dragon-btn" data-act="deathReal" data-r="dragon">Dragon (1)</button><button class="btn small ghost demon-btn" data-act="deathReal" data-r="demon">Démon (20)</button></div>`}
     </section>` : '';
 
   const conds = R.ATTRS.map((a) => `<button class="cond-chip ${c.conditions[a.key] ? 'on' : ''}" data-act="cond" data-k="${a.key}"><b>${a.cond}</b><small>${a.key}</small></button>`).join('');

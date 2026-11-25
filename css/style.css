@@ -844,6 +844,9 @@ body.no-scroll { overflow: hidden; }
 .pres-slot:empty { display: none; }
 .pres-slot { margin: 0 0 6px; }
 @keyframes presPulse { 50% { opacity: .55; } }
-.death-real { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
-.death-real .dragon-btn { color: #12665a; }
-.death-real .demon-btn { color: #9b2c22; }
+.death-grid { display: grid; grid-template-columns: auto auto auto auto; justify-content: start; align-items: center; gap: 6px 10px; margin: 6px 0 10px; }
+.death-grid .btn { justify-content: center; }
+.death-lbl { font-family: var(--font-title); min-width: 90px; }
+.death-pips { display: flex; gap: 6px; }
+.death-grid .dragon-btn { color: #12665a; }
+.death-grid .demon-btn { color: #9b2c22; }
