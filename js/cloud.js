@@ -209,6 +209,17 @@ export function watchMedia(g, id, onData, onError) {
 }
 export async function deleteMedia(g, id) { who(); await fb.deleteDoc(mediaDoc(g, id)); }
 
+// ----- Présence : « ✎ Léa écrit… » (groups/{code}/media/presence_{uid}, éphémère) -----
+export async function setPresence(g, field, name) {
+  const u = who();
+  await fb.setDoc(mediaDoc(g, `presence_${u.uid}`), { kind: 'presence', uid: u.uid, field, name: name || '', at: Date.now() });
+}
+export async function clearPresence(g) { const u = who(); await fb.deleteDoc(mediaDoc(g, `presence_${u.uid}`)); }
+export function watchPresence(g, onData, onError) {
+  const q = fb.query(fb.collection(db, 'groups', g, 'media'), fb.where('kind', '==', 'presence'));
+  return fb.onSnapshot(q, (snap) => { const list = []; snap.forEach((d) => list.push(d.data())); onData(list); }, (e) => onError?.(e));
+}
+
 // ----- Personnages prêtés au groupe (joueur absent) : groups/{code}/media/perso_{id} -----
 // Copie de la fiche de jeu (sans notes secrètes ni journal perso), lisible et modifiable par les membres.
 const persoDoc = (g, id) => mediaDoc(g, `perso_${id}`);

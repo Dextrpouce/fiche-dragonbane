@@ -287,6 +287,7 @@ function render() {
   window.scrollTo(0, y);
   if (ui.tab === 'biblio' && ui.libSearch) filterLib();
   if (ui.tab === 'journal') { afterJournal(); if (ui.jSearch) filterJournal(); } else { sketchCtl = null; stopSketchWatch(); }
+  presWatch(); presShow();
 }
 
 function topbar(c) {
@@ -816,7 +817,7 @@ function accountsCard(g) {
         // Comme la caisse et les comptes : les trois pièces puis le total (en rouge si le groupe doit plus qu'il n'a)
         return `<div class="caisse small ${f < 0 ? 'neg' : ''}"><span class="coin-big gold"><b>${neg}${fm.or}</b> or</span><span class="coin-big silver"><b>${fm.argent}</b> argent</span><span class="coin-big copper"><b>${fm.cuivre}</b> cuivre</span></div>
           <p class="small center ${f < 0 ? 'bad' : 'muted'}">Total : ${neg}${fmtMoney(Math.abs(f))}</p>`; })()}
-      <div class="group-notes"><h3>Notes du groupe <button class="icon-btn small" data-act="gNotes" aria-label="Modifier les notes">${icon('edit')}</button></h3>
+      <div class="group-notes" data-pres="gnotes"><h3>Notes du groupe <button class="icon-btn small" data-act="gNotes" aria-label="Modifier les notes">${icon('edit')}</button></h3>
         ${g.notes ? `<p class="small pre">${esc(g.notes)}</p>` : '<p class="small muted">Rendez-vous, promesses, rumeurs… touche le crayon.</p>'}</div>
     </div>`;
   return `<div class="accounts">
@@ -1721,11 +1722,127 @@ const jTimers = new Map();
 function jSave(el, now) {
   clearTimeout(jTimers.get(el)); jTimers.delete(el);
   const save = () => {
-    if (el.dataset.jf) { const [sid, field] = el.dataset.jf.split('|'); jApply({ t: 'j:set', sid, field, value: el.value }, now && ['title', 'date'].includes(field)); }
-    if (el.dataset.jt) { const [sid, tid] = el.dataset.jt.split('|'); jApply({ t: 'j:todoSet', sid, tid, v: { t: el.value } }, false); }
+    const value = jGuard(el); if (value === null) return;
+    if (el.dataset.jf) { const [sid, field] = el.dataset.jf.split('|'); jApply({ t: 'j:set', sid, field, value }, now && ['title', 'date'].includes(field)); }
+    if (el.dataset.jt) { const [sid, tid] = el.dataset.jt.split('|'); jApply({ t: 'j:todoSet', sid, tid, v: { t: value } }, false); }
   };
   if (now) save(); else jTimers.set(el, setTimeout(save, 1200));
 }
+
+// ---------- Édition partagée (journal du groupe, notes du groupe) ----------
+// 1. Mise à jour en direct sans toucher au champ en cours de saisie ; 2. présence « ✎ Léa écrit… » ;
+// 3. protection : un texte modifié par un autre pendant que j'écrivais n'est pas écrasé (les deux versions sont gardées).
+const jKey = (el) => (el?.dataset?.jf ? `jf:${el.dataset.jf}` : el?.dataset?.jt ? `jt:${el.dataset.jt}` : '');
+function jRemote(el) {
+  const s = group.state; if (!s?.journal) return null;
+  if (el.dataset.jf) { const [sid, f] = el.dataset.jf.split('|'); const x = s.journal.find((y) => y.id === sid); return x ? (x[f] ?? '') : null; }
+  if (el.dataset.jt) { const [sid, tid] = el.dataset.jt.split('|'); const t = s.journal.find((y) => y.id === sid)?.todos?.find((y) => y.id === tid); return t ? (t.t ?? '') : null; }
+  return null;
+}
+function jRemoteBy(el) {
+  if (!el.dataset.jf) return '';
+  const [sid, f] = el.dataset.jf.split('|');
+  return group.state?.journal?.find((y) => y.id === sid)?.ed?.[f]?.by || '';
+}
+// Deux versions d'un texte : la sienne d'abord, puis la mienne
+function mergeText(theirs, mine, line = false) {
+  const t = (theirs || '').trim(); const m = (mine || '').trim();
+  if (!t || t === m || m.includes(t)) return mine;
+  if (!m || t.includes(m)) return theirs;
+  return line ? `${t} / ${m}` : `${t}\n\n— Version de ${author()} :\n${m}`;
+}
+// Fiche (PNJ, lieu) enregistrée : seuls les champs que j'ai changés partent ; un champ changé aussi par un autre garde les deux versions
+function protectEdit(orig, now, v, edKey) {
+  const same = (a, b) => JSON.stringify(a ?? '') === JSON.stringify(b ?? '');
+  const out = {}; let clash = false;
+  for (const k of Object.keys(v)) {
+    if (same(v[k], orig[k])) continue; // je n'y ai pas touché : on garde la version actuelle (peut-être celle d'un autre)
+    let val = v[k];
+    if (jShared() && now && !same(now[k], orig[k]) && !same(now[k], val)) {
+      clash = true;
+      if (typeof val === 'string' && typeof now[k] === 'string' && !['attitude', 'kind', 'photo', 'portrait'].includes(k)) val = mergeText(now[k], val, k !== 'notes');
+    }
+    out[k] = val;
+  }
+  if (clash) toast(`${now?.ed?.[edKey]?.by || 'Un autre membre'} a modifié cette fiche pendant que tu écrivais : les deux versions sont gardées`);
+  return out;
+}
+const jBase = new Map(); // champ → valeur du groupe au début de ma saisie (ou à mon dernier envoi)
+// Valeur à envoyer (null : rien à envoyer) ; fusionne si quelqu'un a changé le champ pendant que j'écrivais
+function jGuard(el) {
+  if (!jShared()) return el.value;
+  const k = jKey(el); const base = jBase.get(k); const remote = jRemote(el);
+  if (remote === null) return el.value;
+  if (base !== undefined && el.value === base) return null; // rien changé depuis mon dernier envoi
+  let value = el.value;
+  if (base !== undefined && remote !== base && remote !== value) {
+    const date = el.dataset.jf?.endsWith('|date');
+    value = date ? value : mergeText(remote, value, el.tagName === 'INPUT');
+    const by = jRemoteBy(el) || 'Un autre membre';
+    toast(date ? `${by} avait aussi changé la date : la tienne est gardée` : `${by} a modifié ce champ pendant que tu écrivais : les deux versions sont gardées`);
+    if (el.isConnected && value !== el.value) { el.value = value; if (document.activeElement === el) el.setSelectionRange?.(value.length, value.length); }
+  }
+  jBase.set(k, value);
+  return value;
+}
+// Le groupe a changé pendant que j'écris : on met à jour les autres champs du journal, pas le mien
+let renderLater = false;
+function liveJournalUpdate() {
+  const act = document.activeElement;
+  $app.querySelectorAll('[data-jf], [data-jt]').forEach((el) => {
+    if (el === act) return;
+    const v = jRemote(el);
+    if (v !== null && el.value !== v && !jTimers.has(el)) el.value = v;
+  });
+  renderLater = true; // nouveaux éléments (pistes, PNJ…) : redessinés quand je quitte le champ
+}
+let pointerDown = false;
+document.addEventListener('pointerdown', () => { pointerDown = true; }, true);
+document.addEventListener('pointerup', () => { pointerDown = false; }, true);
+document.addEventListener('pointercancel', () => { pointerDown = false; }, true);
+function renderWhenIdle() {
+  setTimeout(() => {
+    if (!renderLater) return;
+    const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+    if (typing || dlg.open || document.querySelector('.sketch.full')) return;
+    if (pointerDown) { renderWhenIdle(); return; } // un clic est en cours : ne pas remplacer le bouton sous le doigt
+    renderLater = false; render();
+  }, 300);
+}
+// Présence : qui écrit où
+let presList = []; let presStop = null; let presGid = null; let presMine = null;
+function presWatch() {
+  const g = group.shared?.id || null;
+  if (g === presGid || (g && !cloud.user())) return;
+  presStop?.(); presStop = null; presGid = g; presList = [];
+  if (g) presStop = cloud.watchPresence(g, (l) => { presList = l; presShow(); }, () => {});
+}
+function presSet(key, force = false) {
+  const g = group.shared?.id; if (!g || !key || !cloud.user()) return;
+  if (!force && presMine?.key === key && Date.now() - presMine.at < 8000) return;
+  presMine = { key, at: Date.now(), g };
+  cloud.setPresence(g, key, author()).catch(() => {});
+}
+function presClear() {
+  if (!presMine) return;
+  const { g } = presMine; presMine = null;
+  cloud.clearPresence(g).catch(() => {});
+}
+setInterval(() => { if (presMine) presSet(presMine.key, true); presShow(); }, 10000);
+window.addEventListener('pagehide', presClear);
+function presShow() {
+  document.querySelectorAll('.pres-badge').forEach((b) => b.remove());
+  const now = Date.now(); const me = cloud.uid();
+  for (const p of presList) {
+    if (!p.field || p.uid === me || now - (p.at || 0) > 15000) continue;
+    const i = p.field.indexOf(':'); const kind = p.field.slice(0, i); const id = p.field.slice(i + 1);
+    const sel = kind === 'jf' ? `[data-jf="${CSS.escape(id)}"]` : kind === 'jt' ? `[data-jt="${CSS.escape(id)}"]` : null;
+    const make = () => { const b = document.createElement('span'); b.className = 'pres-badge'; b.textContent = `✎ ${p.name || 'Quelqu’un'} écrit…`; return b; };
+    if (sel) document.querySelectorAll(sel).forEach((el) => el.before(make()));
+    document.querySelectorAll(`[data-pres="${CSS.escape(p.field)}"]`).forEach((el) => el.append(make()));
+  }
+}
+dlg.addEventListener('close', presClear);
 
 const sessionText = (s, j) => [s.title, s.summary, s.npcs, s.places, s.loot, C()?.secret?.s?.[s.id], ...(s.todos || []).map((t) => t.t), ...(s.npcIds || []).map((id) => npcOf(j, id)?.name), ...(s.placeIds || []).map((id) => placeOf(j, id)?.name)].join(' ');
 const J_FIELDS = [['places', 'Lieux', 'Villages, ruines, chemins…', 3], ['loot', 'Butin et récompenses', 'Pièces, objets trouvés, promesses…', 3]];
@@ -1742,7 +1859,7 @@ function npcCards(j) {
   return `<div class="npc-grid">${[...j.npcs].sort((a, b) => a.name.localeCompare(b.name, 'fr')).map((n) => {
     const [att, cls] = NPC_ATT[n.attitude] || NPC_ATT.inconnu;
     const seen = npcSessions(j, n.id);
-    return `<article class="npc-card" data-search="${esc(R.norm([n.name, n.role, n.place, n.notes].join(' ')))}">
+    return `<article class="npc-card" data-pres="npc:${n.id}" data-search="${esc(R.norm([n.name, n.role, n.place, n.notes].join(' ')))}">
       <button class="npc-main" data-act="npcOpen" data-id="${n.id}">
         ${npcFace(n)}
         <span class="npc-txt"><b>${esc(n.name)}</b><small>${esc(n.role || '')}</small></span>
@@ -1764,10 +1881,11 @@ function npcDialog(npc, linkTo = null) {
   const cur = npc ? { ...npc } : { name: '', role: '', place: '', attitude: 'inconnu', notes: '', portrait: '' };
   const img = npc ? npcImg(npc) : '';
   const seen = npc ? npcSessions(j, npc.id) : [];
+  if (npc && jShared()) setTimeout(() => { presSet(`npc:${npc.id}`, true); presShow(); });
   openDialog({
     title: isNew ? 'Nouveau PNJ' : cur.name,
     cls: 'npc-dlg',
-    body: `<div class="npc-dlg-top">
+    body: `${npc ? `<p class="pres-slot" data-pres="npc:${npc.id}"></p>` : ''}<div class="npc-dlg-top">
         <div class="npc-photo-col">
           <button type="button" class="npc-photo" data-npc-photo title="${img ? 'Voir en grand' : 'Ajouter une image'}">${img ? `<img src="${img}" alt="">` : `<span>${icon('plus')}<small>Image</small></span>`}</button>
           <div class="npc-photo-btns">
@@ -1817,7 +1935,7 @@ function npcDialog(npc, linkTo = null) {
         // Note secrète : gardée dans ta fiche, jamais envoyée au groupe
         if (f.secret) { const c = C(); const t = f.secret.value.trim(); if (t) c.secret.n[nid] = t; else delete c.secret.n[nid]; c.updatedAt = Date.now(); store.save(); }
         if (isNew) jApply({ t: 'j:npcAdd', npc: { id: nid, ...v }, sid: linkTo });
-        else jApply({ t: 'j:npcSet', nid, v });
+        else { const p = protectEdit(cur, npcOf(J(), nid), v, 'fiche'); if (Object.keys(p).length) jApply({ t: 'j:npcSet', nid, v: p }); }
       } },
     ],
     onOpen: (f) => {
@@ -1853,7 +1971,7 @@ function placeCards(j) {
     const seen = placeSessions(j, l.id);
     const img = placeImg(l);
     const npcs = (l.npcIds || []).map((id) => npcOf(j, id)).filter(Boolean);
-    return `<article class="npc-card place-card" data-search="${esc(R.norm([l.name, kind, l.where, l.notes, ...npcs.map((n) => n.name)].join(' ')))}">
+    return `<article class="npc-card place-card" data-pres="lieu:${l.id}" data-search="${esc(R.norm([l.name, kind, l.where, l.notes, ...npcs.map((n) => n.name)].join(' ')))}">
       <button class="place-main" data-act="placeOpen" data-id="${l.id}">
         ${img ? `<span class="place-img" style="background-image:url('${img}')"></span>` : ''}
         <span class="npc-txt"><b>${ico} ${esc(l.name)}</b><small>${esc(kind)}${l.where ? ` · ${esc(l.where)}` : ''}</small></span>
@@ -1874,10 +1992,11 @@ function placeDialog(lieu, linkTo = null) {
   const cur = lieu ? { ...lieu } : { name: '', kind: 'village', where: '', notes: '', npcIds: [] };
   const img = lieu ? placeImg(lieu) : '';
   const seen = lieu ? placeSessions(j, lieu.id) : [];
+  if (lieu && jShared()) setTimeout(() => { presSet(`lieu:${lieu.id}`, true); presShow(); });
   openDialog({
     title: isNew ? 'Nouveau lieu' : cur.name,
     cls: 'npc-dlg',
-    body: `<div class="npc-dlg-top">
+    body: `${lieu ? `<p class="pres-slot" data-pres="lieu:${lieu.id}"></p>` : ''}<div class="npc-dlg-top">
         <div class="npc-photo-col">
           <button type="button" class="npc-photo place-photo" data-npc-photo title="${img ? 'Voir en grand' : 'Ajouter une image (plan, illustration…)'}">${img ? `<img src="${img}" alt="">` : `<span>${icon('plus')}<small>Image</small></span>`}</button>
           <div class="npc-photo-btns">
@@ -1925,7 +2044,7 @@ function placeDialog(lieu, linkTo = null) {
         if (f.mjnote) store.setMjNote(group.shared.id, 'l', pid, f.mjnote.value.trim());
         if (f.secret) { const c = C(); const t = f.secret.value.trim(); if (t) c.secret.l[pid] = t; else delete c.secret.l[pid]; c.updatedAt = Date.now(); store.save(); }
         if (isNew) jApply({ t: 'j:placeAdd', place: { id: pid, ...v }, sid: linkTo });
-        else jApply({ t: 'j:placeSet', pid, v });
+        else { const p = protectEdit(cur, placeOf(J(), pid), v, 'fiche'); if (Object.keys(p).length) jApply({ t: 'j:placeSet', pid, v: p }); }
       } },
     ],
     onOpen: (f) => {
@@ -3198,10 +3317,17 @@ const A = {
   gEditCarrier(el) { groupCarrierDialog(G().carriers.find((x) => x.id === el.dataset.k)); },
   gLogAll() { ui.logAll = !ui.logAll; render(); },
   gNotes() {
+    const orig = G().notes || '';
     openDialog({
       title: 'Notes du groupe',
-      body: `<div class="fields">${F.area('notes', 'Notes', G().notes || '')}</div>`,
-      actions: [cancel, { label: 'Enregistrer', primary: true, onClick: (f) => { if (f.notes.value.trim() !== (G().notes || '')) return gApply({ t: 'notes', v: f.notes.value.trim() }) && undefined; } }],
+      body: `<p class="pres-slot" data-pres="gnotes"></p><div class="fields">${F.area('notes', 'Notes', orig)}</div>`,
+      actions: [cancel, { label: 'Enregistrer', primary: true, onClick: (f) => {
+        let v = f.notes.value.trim(); const now = G().notes || '';
+        if (v === orig) return; // rien changé de mon côté : on garde la version actuelle
+        if (group.shared && now !== orig && now !== v) { v = mergeText(now, v); toast('Un autre membre a modifié les notes pendant que tu écrivais : les deux versions sont gardées'); }
+        if (v !== now) return gApply({ t: 'notes', v }) && undefined;
+      } }],
+      onOpen: () => { presSet('gnotes', true); presShow(); },
     });
   },
   gShareCreate() { shareCreateDialog(); },
@@ -3418,7 +3544,10 @@ $app.addEventListener('input', (e) => {
   const el = e.target;
   if (el.id === 'libSearch') { ui.libSearch = el.value; filterLib(); return; }
   if (el.id === 'jSearch') { ui.jSearch = el.value; filterJournal(); return; }
-  if (el.dataset.jf || el.dataset.jt) { jSave(el, false); return; }
+  if (el.dataset.jf || el.dataset.jt) {
+    if (jShared() && !jBase.has(jKey(el))) { const v = jRemote(el); if (v !== null) jBase.set(jKey(el), v); } // valeur de départ (si le début de saisie n'a pas été vu)
+    jSave(el, false); if (jShared()) presSet(jKey(el)); return;
+  }
   if (el.dataset.mjn && group.shared) { const [k, id] = el.dataset.mjn.split('|'); store.setMjNote(group.shared.id, k, id, el.value); return; }
   if (!el.dataset.bind) return;
   setPath(C(), el.dataset.bind, el.hasAttribute('data-num') ? num(el.value) : el.value);
@@ -3527,8 +3656,24 @@ group.onChange(() => {
   mjSync(); // un MJ vient d'être désigné : envoyer mes fiches sans attendre
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
   if (welcomeToMJ()) return;
-  if (['groupe', 'journal', 'mj'].includes(ui.tab) && C() && !typing && !dlg.open && !document.querySelector('.sketch.full')) render();
+  presWatch();
+  if (!['groupe', 'journal', 'mj'].includes(ui.tab) || !C()) return;
+  if (typing) { if (ui.tab === 'journal' && jKey(document.activeElement)) liveJournalUpdate(); else renderLater = true; return; }
+  if (dlg.open || document.querySelector('.sketch.full')) { renderLater = true; return; }
+  render();
 });
+// Début de saisie dans un champ du journal partagé : valeur de départ (protection) et présence
+$app.addEventListener('focusin', (e) => {
+  const k = jKey(e.target); if (!k || !jShared()) return;
+  const v = jRemote(e.target); if (v !== null && !jTimers.has(e.target)) jBase.set(k, v);
+  presSet(k, true);
+});
+$app.addEventListener('focusout', (e) => {
+  const k = jKey(e.target);
+  if (k && jShared()) { presClear(); if (!jTimers.has(e.target)) jBase.delete(k); }
+  renderWhenIdle();
+});
+dlg.addEventListener('close', () => { if (renderLater) renderWhenIdle(); });
 
 // Passage à la v60 (une seule fois) : les personnages encore sans groupe étaient joués dans le groupe affiché
 if (!localStorage.getItem('dragonbane.v60link')) {
