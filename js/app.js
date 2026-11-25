@@ -16,9 +16,10 @@ const dlg = document.getElementById('dlg');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 // Personnage affiché : le tien, ou celui d'un joueur absent que tu joues (ui.guest, voir « Personnages prêtés »)
 let mjStubObj = null;
+function setMjActive(on) { ui.mjActive = !!on; localStorage.setItem('dragonbane.mjActive', on ? '1' : '0'); }
 // MJ sans personnage à lui : une fiche vide en mémoire (jamais enregistrée), pour que l'appli fonctionne
 const mjStub = () => (mjStubObj ||= Object.assign(R.upgradeCharacter(R.newCharacter({ name: 'Meneur de jeu' })), { id: '__mj', stub: true }));
-const C = () => ui.mjView || ui.guest || store.current() || (isMJ() ? mjStub() : null);
+const C = () => ui.mjView || ui.guest || (ui.mjActive && isMJ() ? mjStub() : null) || store.current() || (isMJ() ? mjStub() : null);
 const num = (v) => (v === '' || v == null || isNaN(+v) ? 0 : +v);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const fmtDate = (t) => new Date(t).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' });
@@ -82,6 +83,8 @@ function commit(rerender = true) {
 // ================= État de l'interface =================
 const ui = {
   tab: localStorage.getItem('dragonbane.tab') || 'fiche',
+  // Mode MJ choisi dans la bannière (partie où je suis MJ), retenu d'un lancement à l'autre
+  mjActive: localStorage.getItem('dragonbane.mjActive') === '1',
   // Mode de la fiche : 'normal' (toucher = jet), 'prog' (coches et amélioration), 'libre' (saisie)
   mode: 'normal',
   skillFilter: localStorage.getItem('dragonbane.skillFilter') || 'all',
@@ -261,6 +264,8 @@ function render() {
   if ((ui.guest || ui.mjView) && ui.mode !== 'normal') ui.mode = 'normal'; // personnage prêté ou vu par le MJ : ni mode libre ni progression
   if (ui.tab === 'mj' && !isMJ()) ui.tab = 'fiche';
   if (c.stub && !['mj', 'journal', 'groupe', 'biblio'].includes(ui.tab)) ui.tab = 'mj';
+  // Mon personnage joué dans la partie active : il la retient (choisir ce personnage y ramènera)
+  if (!c.stub && !ui.guest && !ui.mjView && group.shared && !c.groupId && !isMJ()) { c.groupId = group.shared.id; store.save(); }
   watchLent(); mjSync(); mjWatch();
   const y = window.scrollY;
   const marked = c.skills.filter((s) => s.mark).length;
@@ -1346,9 +1351,12 @@ const mjErrText = (e) => (e?.code === 'permission-denied' ? 'Envoi au MJ refusé
 // Images et croquis de mon journal perso (fiche) référencés par un personnage
 const mjMediaIds = (c) => [...(c.journal || []).map((s) => s.sketch), ...(c.npcs || []).map((n) => n.photo), ...(c.lieux || []).map((l) => l.photo)].filter(Boolean);
 let mjOkAt = 0; let mjRetry = null;
+// Personnage de la partie active ? (un personnage sans partie n'est envoyé que si je ne suis pas le MJ de celle-ci)
+const inActiveGroup = (c) => (c.groupId ? c.groupId === group.shared?.id : !isMJ());
 async function mjSend(c) {
   const g = group.shared?.id;
   if (!g || !group.shared.mj || !cloud.user() || !c) return false;
+  if (!inActiveGroup(c)) return true; // personnage d'une autre partie : pas pour ce MJ
   try {
     if (mjSent.get(c.id) !== c.updatedAt) { await cloud.putMJPerso(g, c); mjSent.set(c.id, c.updatedAt); }
     for (const id of mjMediaIds(c)) {
@@ -2706,7 +2714,7 @@ const A = {
         <div class="fields">${F.text('code', 'Code MJ', '', 'full', 'autofocus autocapitalize="characters" placeholder="Ex. MJ7K2QPX"')}</div>`,
       actions: [cancel, { label: 'Entrer comme MJ', primary: true, onClick: (f) => {
         (async () => {
-          try { const name = await group.joinAsMJ(f.code.value); dlg.close(); ui.tab = 'mj'; render(); toast(`Tu es le MJ du groupe « ${name} »`); } catch (e) { toast(e.message || 'Code refusé'); }
+          try { const name = await group.joinAsMJ(f.code.value); dlg.close(); setMjActive(true); ui.tab = 'mj'; render(); toast(`Tu es le MJ du groupe « ${name} »`); } catch (e) { toast(e.message || 'Code refusé'); }
         })();
         return false;
       } }],
@@ -2830,16 +2838,35 @@ const A = {
     const cur = C(); const sh = group.shared;
     const mine = new Set(store.list().map((c) => c.id));
     const lent = sh ? (G().persos || []).filter((p) => !mine.has(p.id)) : [];
+    const groupName = (id) => group.list.find((r) => r.id === id)?.name || '';
+    const mjGroups = group.list.filter((r) => r.role === 'mj');
     openDialog({
-      title: 'Mes personnages',
-      body: `<div class="menu-list">${store.list().map((c) => `<div class="char-row"><button type="button" data-id="${c.id}" class="${c.id === cur?.id ? 'on' : ''}"><span class="crest small">${esc((c.name || '?').charAt(0).toUpperCase())}</span><span><b>${esc(c.name || 'Sans nom')}</b><small>${esc([R.kinName(c), R.profName(c)].filter(Boolean).join(' · '))}</small></span></button>
-          ${sh ? `<label class="check lend-check" title="Si tu es absent, les autres joueurs du groupe pourront le jouer (mode Jeu uniquement)"><input type="checkbox" data-lend="${c.id}" ${lentHere(c) ? 'checked' : ''}><span>Prêter au groupe</span></label>` : ''}</div>`).join('')}</div>
+      title: 'Personnages et parties',
+      body: `<h3>Mes personnages</h3>
+        <div class="menu-list">${store.list().map((c) => `<div class="char-row"><button type="button" data-id="${c.id}" class="${c.id === cur?.id ? 'on' : ''}"><span class="crest small">${esc((c.name || '?').charAt(0).toUpperCase())}</span><span><b>${esc(c.name || 'Sans nom')}</b><small>${esc([R.kinName(c), R.profName(c)].filter(Boolean).join(' · '))}${c.groupId && groupName(c.groupId) ? ` · partie « ${esc(groupName(c.groupId))} »` : ''}</small></span></button>
+          ${sh && (!c.groupId || c.groupId === sh.id) && !(isMJ() && !c.groupId) ? `<label class="check lend-check" title="Si tu es absent, les autres joueurs du groupe pourront le jouer (mode Jeu uniquement)"><input type="checkbox" data-lend="${c.id}" ${lentHere(c) ? 'checked' : ''}><span>Prêter au groupe</span></label>` : ''}</div>`).join('') || '<p class="small muted">Aucun personnage.</p>'}</div>
+        ${mjGroups.length ? `<h3>Parties où je suis MJ</h3>
+          <div class="menu-list">${mjGroups.map((r) => `<button type="button" data-mjg="${r.id}" class="${cur?.stub && sh?.id === r.id ? 'on' : ''}"><span class="crest small">👑</span><span><b>${esc(r.name)}</b><small>Meneur de jeu · code ${esc(r.id)}</small></span></button>`).join('')}</div>` : ''}
         ${sh ? `<h3>Personnages prêtés par le groupe</h3>
           ${lent.length ? `<div class="menu-list">${lent.map((p) => `<button type="button" data-guest="${p.id}" class="${ui.guest?.id === p.id ? 'on' : ''}"><span class="crest small">🎭</span><span><b>${esc(p.name)}</b><small>${esc(p.sub || '')} · joueur : ${esc(p.owner || '?')}</small></span><span class="btn small">Jouer</span></button>`).join('')}</div>`
             : '<p class="small muted">Aucun pour l’instant. Un joueur qui sera absent coche « Prêter au groupe » sur son personnage : vous pourrez alors le jouer à sa place (mode Jeu uniquement).</p>'}` : ''}`,
-      actions: [closeBtn, { label: `${icon('plus')} Nouveau`, primary: true, onClick: () => { setTimeout(creationDialog); } }],
+      actions: [{ label: '👑 MJ d’une partie…', cls: 'ghost', onClick: () => { setTimeout(() => A.mjJoin()); } }, 'spacer', closeBtn, { label: `${icon('plus')} Nouveau`, primary: true, onClick: () => { setMjActive(false); setTimeout(creationDialog); } }],
       onOpen: (f) => {
-        f.querySelectorAll('[data-id]').forEach((b) => { b.onclick = () => { if (ui.guest) guestEnd(); store.select(b.dataset.id); ui.mode = 'normal'; dlg.close(); render(); }; });
+        f.querySelectorAll('[data-id]').forEach((b) => { b.onclick = () => {
+          if (ui.guest) guestEnd();
+          ui.mjView = null; setMjActive(false);
+          store.select(b.dataset.id);
+          // Ce personnage joue dans une autre de mes parties : on y passe
+          const c = store.current();
+          if (c?.groupId && c.groupId !== group.shared?.id && group.switchTo(c.groupId)) toast(`Partie « ${groupName(c.groupId)} »`);
+          ui.mode = 'normal'; dlg.close(); render();
+        }; });
+        f.querySelectorAll('[data-mjg]').forEach((b) => { b.onclick = () => {
+          if (ui.guest) guestEnd();
+          ui.mjView = null;
+          group.switchTo(b.dataset.mjg); setMjActive(true); ui.tab = 'mj'; ui.mode = 'normal';
+          dlg.close(); render(); window.scrollTo(0, 0);
+        }; });
         f.querySelectorAll('[data-guest]').forEach((b) => { b.onclick = () => { dlg.close(); guestStart(b.dataset.guest); }; });
         f.querySelectorAll('[data-lend]').forEach((x) => { x.onchange = () => { const c = store.list().find((y) => y.id === x.dataset.lend); if (c) lendToggle(c, x.checked); }; });
       },

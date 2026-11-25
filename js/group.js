@@ -14,20 +14,46 @@ const KEY = 'dragonbane.sharedGroup';
 const QKEY = 'dragonbane.groupQueue';
 const GAME = 'dragonbane';
 const read = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d; } catch { return d; } };
-let cur = read(KEY, null);          // { id, name, members, state (dernier état connu du serveur), updatedAt }
-let queue = read(QKEY, []);         // [{ id, op, author, date }]
+let cur = read(KEY, null);          // groupe actif : { id, name, members, state (dernier état connu du serveur), updatedAt }
+let queue = read(QKEY, []);         // [{ id, op, author, date, gid }] — chaque modification en attente garde son groupe
+// Plusieurs groupes par compte (joueur dans l'un, MJ dans un autre…) : liste et dernier état connu de chacun
+const LKEY = 'dragonbane.groups';      // [{ id, name, role: 'joueur' | 'mj' }]
+const CKEY = 'dragonbane.groupCache';  // { id: dernier état connu } pour changer de groupe sans réseau
+let mine = read(LKEY, []);
+let cache = read(CKEY, {});
+if (cur && !mine.some((r) => r.id === cur.id)) mine.push({ id: cur.id, name: cur.name, role: 'joueur' });
+const qOf = (q) => q.gid || cur?.id; // anciennes modifications sans groupe : celui qui était actif
 let stop = null;
 let watching = null;
 let error = '';
 let flushing = false;
 let retryTimer = null;
-let savedRef = ''; // groupe déjà enregistré dans le compte pendant cette session
 const listeners = new Set();
 const emit = () => listeners.forEach((fn) => fn());
 const save = () => {
   if (cur) localStorage.setItem(KEY, JSON.stringify(cur)); else localStorage.removeItem(KEY);
   localStorage.setItem(QKEY, JSON.stringify(queue));
+  localStorage.setItem(LKEY, JSON.stringify(mine));
+  try { localStorage.setItem(CKEY, JSON.stringify(cache)); } catch { cache = {}; localStorage.removeItem(CKEY); } // place limitée : on oublie le cache
 };
+// Liste de mes groupes : enregistrée aussi dans mon compte (retrouvée sur mes autres appareils)
+let savedList = '';
+function syncList() {
+  const json = JSON.stringify(mine);
+  if (json === savedList || !cloud.user()) return;
+  savedList = json;
+  cloud.setMyGroup(mine).catch(() => { savedList = ''; });
+}
+function remember(ref) {
+  const i = mine.findIndex((r) => r.id === ref.id);
+  if (i >= 0) mine[i] = { ...mine[i], ...ref }; else mine.push(ref);
+}
+// Changer de groupe actif : on garde l'état de l'ancien pour y revenir sans réseau
+function activate(next) {
+  if (cur) cache[cur.id] = cur;
+  stop?.(); stop = null; watching = null; error = '';
+  cur = next;
+}
 
 // ---------- Argent (en cuivre : 1 or = 10 argent = 100 cuivre) ----------
 const n = (v) => (v === '' || v == null || isNaN(+v) ? 0 : +v);
@@ -281,7 +307,7 @@ function viewState() {
   if (!cur) return store.group;
   const s = JSON.parse(JSON.stringify({ ...EMPTY(), ...(cur.state || {}) }));
   upgradeGroup(s);
-  for (const q of queue) {
+  for (const q of queue.filter((x) => qOf(x) === cur.id)) {
     try { const e = record(s, applyOp(s, q.op), q.author, q.date, q.id); if (e) e.pending = true; } catch { /* sera écartée à l'envoi */ }
   }
   return s;
@@ -296,7 +322,8 @@ const errText = (e) => (e.code === 'resource-exhausted' ? 'Limite gratuite de Fi
 export const group = {
   get shared() { return cur; },
   get state() { return viewState(); },
-  get pending() { return queue.length; },
+  get pending() { return queue.filter((q) => qOf(q) === cur?.id).length; },
+  get list() { return mine; },
   get error() { return cur ? (error || (!navigator.onLine ? 'Hors ligne' : !cloud.user() ? 'Connexion au nuage en attente' : '')) : ''; },
   get online() { return !!cloud.user() && navigator.onLine; },
   onChange(fn) { listeners.add(fn); },
@@ -305,12 +332,17 @@ export const group = {
   refresh() {
     const id = cur?.id;
     if (!id || !cloud.user()) { stop?.(); stop = null; watching = null; return; }
-    const ref = JSON.stringify({ id, name: cur.name });
-    if (savedRef !== ref) { savedRef = ref; cloud.setMyGroup({ id, name: cur.name }).catch(() => { savedRef = ''; }); }
+    if (!mine.some((r) => r.id === id)) { remember({ id, name: cur.name, role: 'joueur' }); save(); }
+    syncList();
     if (watching !== id) {
       stop?.();
       watching = id;
-      stop = cloud.watchGroup(id, (g) => { cur = g; save(); emit(); }, (e) => { error = errText(e); emit(); });
+      stop = cloud.watchGroup(id, (g) => {
+        if (cur?.id !== g.id) return; // réponse tardive d'un groupe qui n'est plus affiché
+        cur = g;
+        remember({ id: g.id, name: g.name, role: g.mj && g.mj === cloud.uid() ? 'mj' : 'joueur' });
+        save(); syncList(); emit();
+      }, (e) => { error = errText(e); emit(); });
     }
     this.flush();
   },
@@ -322,21 +354,34 @@ export const group = {
     delete state.updatedAt;
     record(state, { text: `Groupe « ${name} » créé` }, author);
     await cloud.createGroup(id, name, state);
-    cur = { id, name, members: {}, state, updatedAt: Date.now() }; queue = []; save(); this.refresh(); emit();
+    activate({ id, name, members: {}, owner: cloud.uid(), state, updatedAt: Date.now() });
+    remember({ id, name, role: 'joueur' }); save(); this.refresh(); emit();
     return id;
   },
   async join(code) {
     const id = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!id) throw new Error('Saisis le code du groupe');
     const name = await cloud.joinGroup(id, GAME);
-    cur = { id, name, members: {}, state: EMPTY(), updatedAt: 0 }; queue = []; save(); this.refresh(); emit();
+    activate(cache[id] || { id, name, members: {}, state: EMPTY(), updatedAt: 0 });
+    remember({ id, name, role: mine.find((r) => r.id === id)?.role || 'joueur' }); save(); this.refresh(); emit();
     return name;
+  },
+  // Passer à un autre de mes groupes (sans code : j'en suis déjà membre)
+  switchTo(id) {
+    if (!id || cur?.id === id) return false;
+    const ref = mine.find((r) => r.id === id); if (!ref) return false;
+    activate(cache[id] || { id, name: ref.name, members: {}, state: EMPTY(), updatedAt: 0 });
+    save(); this.refresh(); emit();
+    return true;
   },
   // Groupe enregistré dans mon compte : on le reprend si cet appareil n'en a pas (déjà membre : pas de code à ressaisir)
   restore(ref) {
-    if (cur || !ref?.id) return false;
-    cur = { id: ref.id, name: ref.name || 'Groupe', members: {}, state: EMPTY(), updatedAt: 0 }; queue = []; save(); this.refresh(); emit();
-    return true;
+    const refs = (Array.isArray(ref) ? ref : ref ? [ref] : []).filter((r) => r?.id);
+    let added = 0;
+    for (const r of refs) if (!mine.some((x) => x.id === r.id)) { mine.push({ id: r.id, name: r.name || 'Groupe', role: r.role || 'joueur' }); added++; }
+    if (!cur && mine.length) { const r = mine[0]; activate(cache[r.id] || { id: r.id, name: r.name, members: {}, state: EMPTY(), updatedAt: 0 }); save(); this.refresh(); emit(); return true; }
+    if (added) { save(); emit(); }
+    return false;
   },
   // Entrer dans un groupe comme meneur de jeu, avec le code MJ donné par l'administrateur
   async joinAsMJ(code) {
@@ -347,15 +392,17 @@ export const group = {
     const u = cloud.user();
     const mjName = u.displayName || u.email || 'MJ';
     await cloud.setGroupMJ(id, u.uid, mjName);
-    cur = { id, name, members: {}, mj: u.uid, mjName, state: EMPTY(), updatedAt: 0 }; queue = []; save(); this.refresh(); emit();
+    activate({ ...(cache[id] || { id, name, members: {}, state: EMPTY(), updatedAt: 0 }), mj: u.uid, mjName });
+    remember({ id, name, role: 'mj' }); save(); this.refresh(); emit();
     return name;
   },
   async leave() {
     const id = cur?.id;
     stop?.(); stop = null; watching = null;
-    cur = null; queue = []; error = ''; save(); emit();
-    savedRef = '';
-    cloud.setMyGroup(null).catch(() => {});
+    mine = mine.filter((r) => r.id !== id); delete cache[id];
+    queue = queue.filter((q) => qOf(q) !== id);
+    cur = null; error = ''; save(); emit();
+    syncList();
     if (id) await cloud.leaveGroup(id).catch(() => {});
   },
 
@@ -370,7 +417,7 @@ export const group = {
     }
     const s = viewState();
     const entry = applyOp(s, op); // vérifie qu'elle est possible
-    queue.push({ id: uid(), op, author, date: Date.now() });
+    queue.push({ id: uid(), op, author, date: Date.now(), gid: cur.id });
     save(); emit();
     this.flush();
     return entry;
@@ -378,21 +425,22 @@ export const group = {
 
   // Envoie les opérations en attente, une par une, dans l'ordre
   async flush() {
-    if (flushing || !queue.length || !cur?.id) return;
+    if (flushing || !cur?.id || !queue.some((q) => qOf(q) === cur.id)) return;
     if (!this.online) { error = !navigator.onLine ? 'Hors ligne' : 'Connexion au nuage en attente'; emit(); return; }
     flushing = true;
     clearTimeout(retryTimer);
     let dropped = 0;
     try {
-      while (queue.length) {
-        const q = queue[0];
+      const gid = cur.id;
+      for (let i = queue.findIndex((x) => qOf(x) === gid); i >= 0; i = queue.findIndex((x) => qOf(x) === gid)) {
+        const q = queue[i];
         try {
           // Une modification sans ligne de journal (texte du journal…) doit quand même être écrite
-          await cloud.updateGroup(cur.id, (s) => { const e = applyOp(s, q.op); return record(s, e, q.author, q.date, q.id) || e?.changed; });
+          await cloud.updateGroup(gid, (s) => { const e = applyOp(s, q.op); return record(s, e, q.author, q.date, q.id) || e?.changed; });
         } catch (e) {
           if (e.invalid) dropped++; else throw e;
         }
-        queue.shift(); save();
+        queue.splice(queue.indexOf(q), 1); save();
       }
       error = '';
     } catch (e) {

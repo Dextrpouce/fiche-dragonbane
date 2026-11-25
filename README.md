@@ -82,7 +82,7 @@ Si tu modifies le même personnage sur deux appareils sans réseau, c'est la ver
 
 Les noms français (compétences, états, capacités) sont des traductions libres et se modifient dans l'appli.
 
-Le groupe partagé auquel on appartient est aussi enregistré dans le compte (`users/{uid}/dragonbane/__monGroupe`) : sur un nouvel appareil, il est retrouvé à la connexion, sans ressaisir le code.
+Un compte peut appartenir à **plusieurs groupes** (joueur dans l'un, MJ dans un autre) : la liste, avec le rôle dans chacun, est enregistrée dans le compte (`users/{uid}/dragonbane/__monGroupe`) et retrouvée à la connexion, sans code. La bannière du haut permet de passer d'un personnage (et de sa partie) à une partie où l'on est MJ ; les modifications en attente restent rattachées à leur groupe, et le MJ d'une partie ne reçoit que les personnages de cette partie.
 
 ## Meneur de jeu
 
