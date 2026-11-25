@@ -1,6 +1,7 @@
 import * as R from './rules.js';
 import { store } from './store.js';
 import * as cloud from './cloud.js';
+import * as snd from './sound.js';
 import * as L from './library.js';
 import { MANUAL } from './manual.js';
 import { RULES } from './combat-rules.js';
@@ -1312,12 +1313,14 @@ const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').match
 // S'arrête sans rien faire si la fenêtre a été fermée ou remplacée entre-temps.
 function spin(els, max, ms, done) {
   els = [...els];
-  if (!els.length || reducedMotion()) { done(); return; }
+  const n = els.length;
+  if (!n || reducedMotion()) { snd.land(n || 1); done(); return; }
   const start = performance.now();
   const tick = () => {
     if (!els[0].isConnected) return;
     const t = performance.now() - start;
-    if (t >= ms) { done(); return; }
+    if (t >= ms) { snd.land(n); done(); return; }
+    snd.rattle(n);
     els.forEach((e) => { e.textContent = 1 + Math.floor(Math.random() * max); });
     setTimeout(tick, 45 + 190 * (t / ms) ** 2);
   };
@@ -1856,11 +1859,17 @@ const A = {
         <button type="button" data-m="importFile">${icon('upload')} Importer un fichier</button>
         <button type="button" data-m="cloudMenu">${icon('cloud')} Sauvegarde en ligne</button>
         <button type="button" data-m="manual">${icon('book')} Manuel d’utilisation</button>
+        <button type="button" data-m="soundToggle">${icon('d20')} Son des dés : ${snd.soundOn() ? 'activé' : 'coupé'}</button>
       </div>
       <p class="small muted center">Fiche Dragonbane · fonctionne hors ligne</p>`,
       actions: [closeBtn],
       onOpen: (f) => f.querySelectorAll('[data-m]').forEach((b) => { b.onclick = () => { dlg.close(); setTimeout(() => A[b.dataset.m]()); }; }),
     });
+  },
+  soundToggle() {
+    snd.setSound(!snd.soundOn());
+    toast(snd.soundOn() ? 'Son des dés activé' : 'Son des dés coupé');
+    if (snd.soundOn()) { snd.rattle(2); setTimeout(() => snd.land(2), 180); }
   },
   manual() {
     openDialog({

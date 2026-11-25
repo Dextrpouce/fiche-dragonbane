@@ -15,7 +15,8 @@ export const MANUAL = [
     <p>Touche une compétence : la fenêtre de jet s’ouvre. Ajoute des <b>avantages</b> ou des <b>désavantages</b> si le MJ le demande (ils s’annulent entre eux), puis lance.</p>
     <p>Réussite si le dé est inférieur ou égal au niveau. <b>1 = Dragon</b>, <b>20 = Démon</b> : la compétence est cochée toute seule.</p>
     <p>Raté ? Tu peux <b>forcer le jet</b> en choisissant un état (impossible sur un Démon).</p>
-    <p>Tes états, ton armure et la musique du barde ajoutent leurs avantages ou désavantages automatiquement.</p>`],
+    <p>Tes états, ton armure et la musique du barde ajoutent leurs avantages ou désavantages automatiquement.</p>
+    <p>Avant le jet, la fenêtre montre les dés qui seront lancés (vert-bleu : avantage, rouge : désavantage). Les dés roulent un instant, avec un bruit de dés, avant le résultat. Le son se coupe dans le menu ⋮ › Son des dés.</p>`],
   ['Jouer avec tes propres dés', `
     <p>À droite de chaque compétence, le losange vide <b>✧</b>. Tu as fait un Dragon ou un Démon avec tes dés ? Touche-le et confirme : la compétence est cochée <b>✦</b>.</p>`],
   ['Fiche', `
