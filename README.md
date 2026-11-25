@@ -27,6 +27,18 @@ Tout est enregistré **sur l'appareil**, donc l'appli fonctionne **sans internet
 
 L'appli utilise le **même projet Firebase que le Grimoire WFRP** (`grimoire-wfrp`). Les personnages Dragonbane sont rangés à part (`users/{ton compte}/dragonbane`), et la règle Firestore déjà en place (`match /users/{uid}/{document=**}`) les protège : toi seul peux les lire et les modifier.
 
+**Journal partagé avec le groupe** : quand le groupe est partagé, l'onglet Journal (sessions, pistes, PNJ) est rangé dans le document du groupe (`groups/{code}`), comme la caisse. Les croquis et les images des PNJ sont trop lourds pour ce document : ils vont dans `groups/{code}/media/{id}`. Il faut pour cela ajouter cette règle dans Firestore (**Firestore Database** › **Règles**, à l'intérieur de `match /databases/{database}/documents { … }`), puis **Publier** :
+
+```
+// Images et croquis du journal d'un groupe : réservés aux membres du groupe
+match /groups/{id}/media/{mid} {
+  allow read, write: if request.auth != null
+    && request.auth.uid in get(/databases/$(database)/documents/groups/$(id)).data.members;
+}
+```
+
+Sans cette règle, le texte du journal est partagé normalement, mais les croquis et les images restent en « Chargement… » et l'appli affiche « Images et croquis du groupe refusés par Firebase ».
+
 Si tu héberges l'appli sur la même adresse GitHub Pages que le Grimoire (`TON-PSEUDO.github.io`), ce domaine est déjà autorisé dans Firebase. Sinon, ajoute-le dans Firebase › Authentication › Paramètres › Domaines autorisés.
 
 ## Mettre l'appli en ligne (GitHub Pages)

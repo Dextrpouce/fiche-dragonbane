@@ -745,3 +745,7 @@ body.no-scroll { overflow: hidden; }
 .npc-zoom[hidden] { display: none; }
 .npc-zoom img { max-width: 94vw; max-height: 86vh; border-radius: 10px; box-shadow: 0 6px 30px #000a; }
 .npc-zoom small { color: #e8dcc0; }
+/* Journal partagé */
+.j-shared { display: flex; gap: 6px; align-items: flex-start; color: var(--teal); margin: 0 0 8px; }
+.j-shared .i { width: 18px; height: 18px; flex: none; }
+.sk-loading { padding: 12px; text-align: center; }

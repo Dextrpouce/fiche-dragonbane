@@ -8,6 +8,7 @@
 import * as cloud from './cloud.js';
 import { store } from './store.js';
 import { uid, upgradeGroup, CARRIER_TYPES } from './rules.js';
+import { applyJournalOp } from './journal-ops.js';
 
 const KEY = 'dragonbane.sharedGroup';
 const QKEY = 'dragonbane.groupQueue';
@@ -58,7 +59,7 @@ function take(m, x) {
 const fail = (msg) => { throw Object.assign(new Error(msg), { invalid: true }); };
 const qtyTxt = (q) => (n(q) > 1 ? ` ×${q}` : '');
 
-export const EMPTY = () => ({ game: GAME, money: { or: 0, argent: 0, cuivre: 0 }, carriers: [], accounts: [], notes: '', log: [] });
+export const EMPTY = () => ({ game: GAME, money: { or: 0, argent: 0, cuivre: 0 }, carriers: [], accounts: [], notes: '', log: [], journal: [], npcs: [] });
 
 // ---------- Comptes : argent du groupe gardé ailleurs, dettes, projets ----------
 // bal (en cuivre) : dépôt = ce qui est gardé ; on nous doit = ce qu'on attend ; on doit = ce qu'on doit ;
@@ -81,6 +82,7 @@ export function applyOp(s, op) {
   const car = (id) => s.carriers.find((x) => x.id === id) || fail('Monture ou véhicule introuvable (supprimé ?)');
   const item = (k, id) => k.items.find((x) => x.id === id) || fail('Objet introuvable (déjà déplacé ou supprimé ?)');
   const acct = (id) => s.accounts.find((x) => x.id === id) || fail('Compte introuvable (supprimé ?)');
+  if (op.t.startsWith('j:')) return applyJournalOp(s, op); // journal de campagne partagé
   switch (op.t) {
     case 'money': {
       if (op.sign > 0) add(s.money, op.coins); else take(s.money, op.coins);
@@ -240,6 +242,7 @@ export function record(s, entry, who, date = Date.now(), id = uid()) {
   const e = { id, date, who, ...entry };
   if (!e.undo) delete e.undo;
   if (!e.purse) delete e.purse;
+  delete e.changed;
   s.log = [e, ...(s.log || [])].sort((a, b) => b.date - a.date).slice(0, 400);
   return e;
 }
@@ -333,7 +336,8 @@ export const group = {
       while (queue.length) {
         const q = queue[0];
         try {
-          await cloud.updateGroup(cur.id, (s) => record(s, applyOp(s, q.op), q.author, q.date, q.id));
+          // Une modification sans ligne de journal (texte du journal…) doit quand même être écrite
+          await cloud.updateGroup(cur.id, (s) => { const e = applyOp(s, q.op); return record(s, e, q.author, q.date, q.id) || e?.changed; });
         } catch (e) {
           if (e.invalid) dropped++; else throw e;
         }

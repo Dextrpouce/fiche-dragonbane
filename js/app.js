@@ -3,6 +3,8 @@ import { store } from './store.js';
 import * as cloud from './cloud.js';
 import * as snd from './sound.js';
 import * as SK from './sketch.js';
+import * as media from './media.js';
+import { applyJournalOp } from './journal-ops.js';
 import * as L from './library.js';
 import { MANUAL } from './manual.js';
 import { RULES } from './combat-rules.js';
@@ -259,7 +261,7 @@ function render() {
   </div>`;
   window.scrollTo(0, y);
   if (ui.tab === 'biblio' && ui.libSearch) filterLib();
-  if (ui.tab === 'journal') { afterJournal(); if (ui.jSearch) filterJournal(); } else sketchCtl = null;
+  if (ui.tab === 'journal') { afterJournal(); if (ui.jSearch) filterJournal(); } else { sketchCtl = null; stopSketchWatch(); }
 }
 
 function topbar(c) {
@@ -1298,25 +1300,50 @@ function viewCarnet(c) {
   </div>`;
 }
 
-// ---------- Journal : une page par session (rubriques, pistes, croquis au stylet) ----------
-// Les textes sont dans la fiche (c.journal) ; les croquis à part (store.sketch), pour garder la fiche légère.
+// ---------- Journal : une page par session (rubriques, pistes, PNJ, croquis au stylet) ----------
+// Deux sources, même code : le journal personnel (dans la fiche) ou celui du groupe partagé (tout le monde
+// le lit et le complète). Toute modification est une opération (journal-ops.js) : appliquée à la fiche,
+// ou envoyée au groupe comme la caisse (avec son auteur, en attente hors ligne).
+// Images et croquis : media.js (sur l'appareil, ou groups/{code}/media pour le groupe).
 const todayISO = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 const fmtDay = (iso) => { const d = iso ? new Date(`${iso}T12:00`) : null; return d && !isNaN(d) ? d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; };
-const sessionText = (s, c = C()) => [s.title, s.summary, s.npcs, s.places, s.loot, ...(s.todos || []).map((t) => t.t), ...(s.npcIds || []).map((id) => npcOf(c, id)?.name)].join(' ');
+const jShared = () => !!group.shared;
+const J = () => (jShared() ? group.state : C());
+function jApply(op, rerender = true) {
+  try {
+    if (jShared()) { group.apply(op, author()); if (rerender) render(); } else { applyJournalOp(C(), op); commit(rerender); }
+    return true;
+  } catch (e) { toast(e.message); return false; }
+}
+// Champ de texte du journal : enregistré après une pause de frappe, et à la sortie du champ
+const jField = (sid, field, val, attrs = '', area = false) => (area
+  ? `<textarea data-jf="${sid}|${field}" ${attrs}>${esc(val || '')}</textarea>`
+  : `<input data-jf="${sid}|${field}" value="${esc(val || '')}" ${attrs}>`);
+const jTimers = new Map();
+function jSave(el, now) {
+  clearTimeout(jTimers.get(el)); jTimers.delete(el);
+  const save = () => {
+    if (el.dataset.jf) { const [sid, field] = el.dataset.jf.split('|'); jApply({ t: 'j:set', sid, field, value: el.value }, now && ['title', 'date'].includes(field)); }
+    if (el.dataset.jt) { const [sid, tid] = el.dataset.jt.split('|'); jApply({ t: 'j:todoSet', sid, tid, v: { t: el.value } }, false); }
+  };
+  if (now) save(); else jTimers.set(el, setTimeout(save, 1200));
+}
+
+const sessionText = (s, j) => [s.title, s.summary, s.npcs, s.places, s.loot, ...(s.todos || []).map((t) => t.t), ...(s.npcIds || []).map((id) => npcOf(j, id)?.name)].join(' ');
 const J_FIELDS = [['places', 'Lieux', 'Villages, ruines, chemins…', 3], ['loot', 'Butin et récompenses', 'Pièces, objets trouvés, promesses…', 3]];
-// PNJ : un registre par personnage (c.npcs), relié aux sessions (session.npcIds)
+// PNJ : registre du journal (j.npcs), relié aux sessions (session.npcIds)
 const NPC_ATT = { ami: ['Allié', 'good'], neutre: ['Neutre', ''], hostile: ['Hostile', 'bad'], inconnu: ['Inconnu', 'muted'] };
-const npcOf = (c, id) => c.npcs.find((n) => n.id === id);
-const npcSessions = (c, id) => c.journal.filter((s) => (s.npcIds || []).includes(id)).sort((a, b) => a.n - b.n);
-// Image d'un PNJ : rangée à part de la fiche (comme les croquis) ; les anciennes vignettes restaient dans la fiche
-const npcImg = (n) => (n.photo && store.sketch(n.photo)?.image) || n.portrait || '';
+const npcOf = (j, id) => j.npcs.find((n) => n.id === id);
+const npcSessions = (j, id) => j.journal.filter((s) => (s.npcIds || []).includes(id)).sort((a, b) => a.n - b.n);
+// Image d'un PNJ : rangée à part (media) ; les toutes premières vignettes restaient dans la fiche (portrait)
+const npcImg = (n) => (n.photo && media.get(n.photo)?.image) || n.portrait || '';
 const npcFace = (n, cls = '') => (npcImg(n) ? `<span class="npc-face ${cls}" style="background-image:url('${npcImg(n)}')"></span>`
   : `<span class="npc-face ${cls} initial">${esc((n.name || '?').trim().charAt(0).toUpperCase())}</span>`);
-function npcCards(c) {
-  if (!c.npcs.length) return '<div class="empty">Aucun PNJ pour l’instant. Crée-les ici ou depuis une session (« PNJ rencontrés »).</div>';
-  return `<div class="npc-grid">${[...c.npcs].sort((a, b) => a.name.localeCompare(b.name, 'fr')).map((n) => {
+function npcCards(j) {
+  if (!j.npcs.length) return '<div class="empty">Aucun PNJ pour l’instant. Crée-les ici ou depuis une session (« PNJ rencontrés »).</div>';
+  return `<div class="npc-grid">${[...j.npcs].sort((a, b) => a.name.localeCompare(b.name, 'fr')).map((n) => {
     const [att, cls] = NPC_ATT[n.attitude] || NPC_ATT.inconnu;
-    const seen = npcSessions(c, n.id);
+    const seen = npcSessions(j, n.id);
     return `<article class="npc-card" data-search="${esc(R.norm([n.name, n.role, n.place, n.notes].join(' ')))}">
       <button class="npc-main" data-act="npcOpen" data-id="${n.id}">
         ${npcFace(n)}
@@ -1329,12 +1356,12 @@ function npcCards(c) {
     </article>`;
   }).join('')}</div>`;
 }
-// Fiche d'un PNJ (création si npc est null ; linkTo : session à laquelle le relier)
+// Fiche d'un PNJ (création si npc est null ; linkTo : identifiant de la session à laquelle le relier)
 function npcDialog(npc, linkTo = null) {
-  const c = C(); const isNew = !npc;
+  const j = J(); const isNew = !npc;
   const cur = npc ? { ...npc } : { name: '', role: '', place: '', attitude: 'inconnu', notes: '', portrait: '' };
   const img = npc ? npcImg(npc) : '';
-  const seen = npc ? npcSessions(c, npc.id) : [];
+  const seen = npc ? npcSessions(j, npc.id) : [];
   openDialog({
     title: isNew ? 'Nouveau PNJ' : cur.name,
     cls: 'npc-dlg',
@@ -1362,10 +1389,8 @@ function npcDialog(npc, linkTo = null) {
     actions: [
       ...(!isNew ? [{ label: icon('trash'), cls: 'ghost', onClick: () => {
         setTimeout(() => confirmDialog('Supprimer le PNJ', `Supprimer la fiche de ${esc(npc.name)} ? Il sera retiré des sessions où il apparaît.`, 'Supprimer', () => {
-          if (npc.photo) store.removeSketch(npc.photo);
-          c.npcs = c.npcs.filter((x) => x.id !== npc.id);
-          c.journal.forEach((s) => { s.npcIds = (s.npcIds || []).filter((id) => id !== npc.id); });
-          commit();
+          if (npc.photo) media.remove(npc.photo);
+          jApply({ t: 'j:npcDel', nid: npc.id });
         }));
       } }, 'spacer'] : []),
       cancel,
@@ -1374,19 +1399,16 @@ function npcDialog(npc, linkTo = null) {
         if (!name) { toast('Donne un nom au PNJ'); return false; }
         const v = { name, role: f.role.value.trim(), place: f.place.value.trim(), attitude: f.attitude.value, notes: f.notes.value.trim() };
         if (f.noPhoto?.checked) {
-          if (cur.photo) store.removeSketch(cur.photo);
+          if (cur.photo) media.remove(cur.photo);
           Object.assign(v, { photo: null, portrait: '' });
         } else if (f.dataset.photo) {
-          // Nouvelle image : enregistrée à part (un document en ligne), la fiche ne garde que son identifiant
+          // Nouvelle image : rangée à part, le journal ne garde que son identifiant
           const id = cur.photo || R.uid();
-          store.saveSketch({ id, cid: c.id, image: f.dataset.photo });
+          media.put({ id, image: f.dataset.photo }, C().id).catch(() => toast(media.error() || 'Image non envoyée'));
           Object.assign(v, { photo: id, portrait: '' });
         }
-        if (isNew) {
-          const n = { id: R.uid(), ...v }; c.npcs.push(n);
-          if (linkTo) (linkTo.npcIds ||= []).push(n.id);
-        } else Object.assign(npc, v);
-        commit();
+        if (isNew) jApply({ t: 'j:npcAdd', npc: { id: R.uid(), ...v }, sid: linkTo });
+        else jApply({ t: 'j:npcSet', nid: npc.id, v });
       } },
     ],
     onOpen: (f) => {
@@ -1410,12 +1432,19 @@ function npcDialog(npc, linkTo = null) {
 }
 
 let sketchCtl = null; // zone de dessin affichée
+let sketchWatch = null; // suivi en direct du croquis (groupe)
 
 function viewJournal(c) {
-  const list = c.journal;
+  const j = J(); const list = j.journal; const sh = group.shared;
+  // Journal partagé : bandeau, erreurs d'images, et proposition de verser son journal personnel
+  const mine = sh ? { s: c.journal.filter((s) => !list.some((x) => x.id === s.id)).length, n: c.npcs.filter((n) => !j.npcs.some((x) => x.id === n.id)).length } : null;
+  const shareInfo = sh ? `<p class="small j-shared">${icon('users')} Journal partagé avec le groupe « ${esc(sh.name)} » : tout le monde le voit et le complète.</p>
+      ${media.error() ? `<p class="small bad">${esc(media.error())}</p>` : ''}
+      ${mine.s || mine.n ? `<button class="btn ghost small block" data-act="jImport">${icon('upload')} Verser mon journal perso (${mine.s} session${mine.s > 1 ? 's' : ''}, ${mine.n} PNJ)</button>` : ''}` : '';
   if (!list.length) {
     return `<section class="card journal-empty">
       <h2>Journal de campagne</h2>
+      ${shareInfo}
       <p>Une page par séance : ce qui s’est passé, les PNJ, les lieux, le butin, les pistes à suivre, et une page de croquis pour dessiner au stylet (plans, cartes, notes griffonnées).</p>
       <button class="btn" data-act="jNew">${icon('plus')} Première session</button>
       <p class="small muted">Sur iPad avec l’Apple Pencil, tu peux aussi écrire à la main directement dans les champs : l’iPad transforme l’écriture en texte. Sur Android, utilise le mode écriture manuscrite du clavier.</p>
@@ -1423,27 +1452,26 @@ function viewJournal(c) {
   }
   const cur = list.find((s) => s.id === (ui.jSession ?? localStorage.getItem('dragonbane.jSession'))) || list[0];
   ui.jSession = cur.id; localStorage.setItem('dragonbane.jSession', cur.id); // session ouverte retenue d'un lancement à l'autre
-  const i = list.indexOf(cur);
-  const open = list.flatMap((s, si) => (s.todos || []).map((t, ti) => ({ s, si, t, ti }))).filter((x) => !x.t.done);
-  const sessions = list.map((s) => `<button class="j-item ${s === cur ? 'on' : ''}" data-act="jOpen" data-id="${s.id}" data-search="${esc(R.norm(sessionText(s)))}">
-      <b>Session ${s.n}</b><span>${esc(s.title || 'Sans titre')}</span><small>${fmtDay(s.date)}${s.sketch && store.sketch(s.sketch)?.strokes?.length ? ' · ✎' : ''}</small>
+  const open = list.flatMap((s) => (s.todos || []).map((t) => ({ s, t }))).filter((x) => !x.t.done);
+  const sessions = list.map((s) => `<button class="j-item ${s === cur ? 'on' : ''}" data-act="jOpen" data-id="${s.id}" data-search="${esc(R.norm(sessionText(s, j)))}">
+      <b>Session ${s.n}</b><span>${esc(s.title || 'Sans titre')}</span><small>${fmtDay(s.date)}${s.sketch ? ' · ✎' : ''}</small>
     </button>`).join('');
-  const sk = cur.sketch ? store.sketch(cur.sketch) : null;
-  const jTabs = `<div class="filters j-tabs"><button class="chip ${ui.jView !== 'npcs' ? 'on' : ''}" data-act="jView" data-v="sessions">Sessions (${list.length})</button><button class="chip ${ui.jView === 'npcs' ? 'on' : ''}" data-act="jView" data-v="npcs">PNJ (${c.npcs.length})</button></div>`;
+  const jTabs = `<div class="filters j-tabs"><button class="chip ${ui.jView !== 'npcs' ? 'on' : ''}" data-act="jView" data-v="sessions">Sessions (${list.length})</button><button class="chip ${ui.jView === 'npcs' ? 'on' : ''}" data-act="jView" data-v="npcs">PNJ (${j.npcs.length})</button></div>`;
   if (ui.jView === 'npcs') {
     return `<div class="grid journal">
       <section class="card j-list">
-        <h2>Journal</h2>${jTabs}
+        <h2>Journal</h2>${shareInfo}${jTabs}
         <button class="btn block" data-act="npcNew">${icon('plus')} Nouveau PNJ</button>
         <input class="lib-search" id="jSearch" type="search" placeholder="Rechercher un PNJ…" value="${esc(ui.jSearch || '')}">
         <p class="small muted">Chaque PNJ a sa fiche : rôle, attitude, où le trouver, notes, et les sessions où vous l’avez croisé. Relie-les depuis une session (« PNJ rencontrés »).</p>
       </section>
-      <section class="card j-main-npcs"><h2>Personnages non joueurs</h2>${npcCards(c)}<p class="empty j-none" hidden>Rien ne correspond.</p></section>
+      <section class="card j-main-npcs"><h2>Personnages non joueurs</h2>${npcCards(j)}<p class="empty j-none" hidden>Rien ne correspond.</p></section>
     </div>`;
   }
+  const sid = cur.id;
   return `<div class="grid journal">
     <section class="card j-list">
-      <h2>Journal</h2>${jTabs}
+      <h2>Journal</h2>${shareInfo}${jTabs}
       <button class="btn block" data-act="jNew">${icon('plus')} Nouvelle session</button>
       <input class="lib-search" id="jSearch" type="search" placeholder="Rechercher dans le journal…" value="${esc(ui.jSearch || '')}">
       <div class="j-items">${sessions}</div>
@@ -1452,60 +1480,67 @@ function viewJournal(c) {
     <div class="j-main">
       ${open.length ? `<section class="card j-open">
         <h2>Pistes en cours</h2>
-        ${open.map(({ s, si, t, ti }) => `<label class="j-todo"><input type="checkbox" data-act="jTodo" data-s="${si}" data-t="${ti}"><span>${esc(t.t)}</span><small>S${s.n}</small></label>`).join('')}
+        ${open.map(({ s, t }) => `<label class="j-todo"><input type="checkbox" data-act="jTodo" data-sid="${s.id}" data-tid="${t.id}"><span>${esc(t.t)}</span><small>S${s.n}</small></label>`).join('')}
       </section>` : ''}
       <section class="card j-page">
         <div class="j-head">
           <span class="j-num">Session ${cur.n}</span>
-          <input class="j-title" data-bind="journal.${i}.title" value="${esc(cur.title)}" placeholder="Titre de la séance">
-          <input class="j-date" type="date" data-bind="journal.${i}.date" data-rerender value="${esc(cur.date)}">
+          ${jField(sid, 'title', cur.title, 'class="j-title" placeholder="Titre de la séance"')}
+          ${jField(sid, 'date', cur.date, 'class="j-date" type="date"')}
           <button class="icon-btn small" data-act="jDelete" aria-label="Supprimer cette session">${icon('trash')}</button>
         </div>
         <div class="j-fields">
-          <div class="field full"><label>Résumé</label>${bind(`journal.${i}.summary`, cur.summary || '', 'area', 'rows="6" placeholder="Ce qui s’est passé…"')}</div>
-        <div class="field j-npcs"><label>PNJ rencontrés</label>
-          <div class="npc-chips">${(cur.npcIds || []).map((id) => npcOf(c, id)).filter(Boolean).map((n) => `<span class="npc-chip att-${n.attitude || 'inconnu'}">
-              <button data-act="npcOpen" data-id="${n.id}">${npcFace(n, 'mini')}${esc(n.name)}</button><button class="x" data-act="jNpcUnlink" data-id="${n.id}" aria-label="Retirer de la session">×</button></span>`).join('')}</div>
-          <form class="quick-add" data-form="jNpc"><input name="n" list="npcNames" autocomplete="off" placeholder="Nom du PNJ (déjà croisé ou nouveau)"><button class="btn small" type="submit">${icon('plus')}</button></form>
-          <datalist id="npcNames">${c.npcs.filter((n) => !(cur.npcIds || []).includes(n.id)).map((n) => `<option value="${esc(n.name)}">`).join('')}</datalist>
-          ${cur.npcs ? `<label class="small muted">Notes</label>${bind(`journal.${i}.npcs`, cur.npcs, 'area', 'rows="2"')}` : ''}
-        </div>
-          ${J_FIELDS.map(([k, label, ph, rows]) => `<div class="field"><label>${label}</label>${bind(`journal.${i}.${k}`, cur[k] || '', 'area', `rows="${rows}" placeholder="${ph}"`)}</div>`).join('')}
+          <div class="field full"><label>Résumé</label>${jField(sid, 'summary', cur.summary, 'rows="6" placeholder="Ce qui s’est passé…"', true)}</div>
+          <div class="field j-npcs"><label>PNJ rencontrés</label>
+            <div class="npc-chips">${(cur.npcIds || []).map((id) => npcOf(j, id)).filter(Boolean).map((n) => `<span class="npc-chip att-${n.attitude || 'inconnu'}">
+                <button data-act="npcOpen" data-id="${n.id}">${npcFace(n, 'mini')}${esc(n.name)}</button><button class="x" data-act="jNpcUnlink" data-id="${n.id}" aria-label="Retirer de la session">×</button></span>`).join('')}</div>
+            <form class="quick-add" data-form="jNpc"><input name="n" list="npcNames" autocomplete="off" placeholder="Nom du PNJ (déjà croisé ou nouveau)"><button class="btn small" type="submit">${icon('plus')}</button></form>
+            <datalist id="npcNames">${j.npcs.filter((n) => !(cur.npcIds || []).includes(n.id)).map((n) => `<option value="${esc(n.name)}">`).join('')}</datalist>
+            ${cur.npcs ? `<label class="small muted">Notes</label>${jField(sid, 'npcs', cur.npcs, 'rows="2"', true)}` : ''}
+          </div>
+          ${J_FIELDS.map(([k, label, ph, rows]) => `<div class="field"><label>${label}</label>${jField(sid, k, cur[k], `rows="${rows}" placeholder="${ph}"`, true)}</div>`).join('')}
         </div>
         <h3>Pistes et choses à faire</h3>
-        ${(cur.todos || []).map((t, ti) => `<div class="j-todo-row ${t.done ? 'done' : ''}">
-            <input type="checkbox" data-act="jTodo" data-s="${i}" data-t="${ti}" ${t.done ? 'checked' : ''}>
-            <input data-bind="journal.${i}.todos.${ti}.t" value="${esc(t.t)}">
-            <button class="icon-btn small" data-act="jTodoDel" data-t="${ti}" aria-label="Supprimer">${icon('trash')}</button>
+        ${(cur.todos || []).map((t) => `<div class="j-todo-row ${t.done ? 'done' : ''}">
+            <input type="checkbox" data-act="jTodo" data-sid="${sid}" data-tid="${t.id}" ${t.done ? 'checked' : ''}>
+            <input data-jt="${sid}|${t.id}" value="${esc(t.t)}">
+            <button class="icon-btn small" data-act="jTodoDel" data-tid="${t.id}" aria-label="Supprimer">${icon('trash')}</button>
           </div>`).join('')}
         <form class="quick-add" data-form="jTodo"><input name="t" placeholder="Ajouter une piste (ex. Retourner voir Maître Ulwar)"><button class="btn small" type="submit">${icon('plus')}</button></form>
         <h3>Croquis</h3>
-        ${sk ? `<div class="sketch" data-sketch="${sk.id}">
+        ${cur.sketch ? `<div class="sketch" data-sketch="${cur.sketch}">
             <div class="sk-tools">
               ${SK.COLORS.map((col, ci) => `<button class="sk-btn sk-col" data-act="skColor" data-c="${ci}" title="${col.name}"><i style="background:${col.css}"></i></button>`).join('')}
               <button class="sk-btn" data-act="skErase" title="Gomme">${icon('eraser')}</button>
               <span class="spacer"></span>
-              <button class="sk-btn" data-act="skUndo" title="Annuler le dernier trait">${icon('undo')}</button>
+              <button class="sk-btn" data-act="skUndo" title="Annuler mon dernier trait">${icon('undo')}</button>
               <button class="sk-btn" data-act="skClear" title="Tout effacer">${icon('trash')}</button>
               <button class="btn small sk-full-btn" data-act="skFull">${icon('expand')}<span class="lbl-open">Plein écran</span><span class="lbl-close">Fermer</span></button>
             </div>
             <canvas class="sk-canvas"></canvas>
+            <p class="sk-loading small muted" hidden>Chargement du croquis…</p>
           </div>
-          <p class="small muted hint">Stylet, doigt ou souris. Avec un stylet, la paume posée sur l’écran ne dessine pas ; la pression épaissit le trait.</p>`
+          <p class="small muted hint">Stylet, doigt ou souris. Avec un stylet, la paume posée sur l’écran ne dessine pas ; la pression épaissit le trait.${sh ? ' Les traits des autres joueurs apparaissent en direct.' : ''}</p>`
           : `<button class="btn ghost" data-act="jSketch">${icon('edit')} Ajouter une page de croquis</button>`}
       </section>
     </div>
   </div>`;
 }
-// Après l'affichage : active la zone de dessin et la recherche
+// Après l'affichage : active la zone de dessin (et son suivi en direct pour le groupe)
+function stopSketchWatch() { sketchWatch?.(); sketchWatch = null; }
 function afterJournal() {
+  stopSketchWatch();
   const wrap = document.querySelector('.sketch[data-sketch]');
   if (!wrap) { sketchCtl = null; return; }
-  const sk = store.sketch(wrap.dataset.sketch);
+  const id = wrap.dataset.sketch;
+  const sk = media.get(id);
+  if (!sk) { wrap.querySelector('.sk-loading').hidden = false; sketchCtl = null; return; } // il arrive : on redessinera
+  sk.strokes ||= [];
   const prev = sketchCtl;
-  sketchCtl = SK.mountSketch(wrap, sk, () => store.saveSketch(sk));
+  sketchCtl = SK.mountSketch(wrap, sk, (ev) => media.strokes(sk, ev), { undoAny: !jShared() });
   if (prev) { sketchCtl.setColor(prev.color); sketchCtl.setErase(prev.erase); }
   syncSketchTools();
+  if (jShared()) sketchWatch = media.watch(id, (m) => sketchCtl?.setStrokes(m.strokes));
   if (ui.skOpenFull) { ui.skOpenFull = false; A.skFull(); }
 }
 function syncSketchTools() {
@@ -1519,6 +1554,11 @@ function filterJournal() {
 }
 window.addEventListener('resize', () => { if (sketchCtl && document.querySelector('.sketch')) sketchCtl.resize(); });
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.querySelector('.sketch.full') && !dlg.open) A.skFull(); });
+// Une image ou un croquis du groupe vient d'arriver : on redessine (sauf pendant la frappe)
+media.setOnArrive(() => {
+  const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+  if (ui.tab === 'journal' && C() && !typing && !dlg.open && !document.querySelector('.sketch.full')) render();
+});
 
 const VIEWS = { fiche: viewFiche, combat: viewCombat, magie: viewMagie, sac: viewSac, prog: viewProg, carnet: viewCarnet, journal: viewJournal, groupe: viewGroupe, biblio: viewBiblio };
 
@@ -2203,43 +2243,47 @@ const A = {
   },
   exportAll() { download(`dragonbane-${new Date().toISOString().slice(0, 10)}.json`, store.exportAll()); },
   exportOne() { const c = C(); download(`${R.norm(c.name).replace(/[^a-z0-9]+/g, '-') || 'personnage'}.json`, store.exportOne(c)); },
-  // ----- Journal -----
+  // ----- Journal (perso ou groupe : tout passe par jApply) -----
   jNew() {
-    const c = C();
-    const n = c.journal.reduce((m, s) => Math.max(m, +s.n || 0), 0) + 1;
-    const s = { id: R.uid(), n, date: todayISO(), title: '', summary: '', npcs: '', places: '', loot: '', todos: [], sketch: null };
-    c.journal.unshift(s); ui.jSession = s.id; ui.jSearch = '';
-    commit(); window.scrollTo(0, 0);
+    const id = R.uid();
+    if (jApply({ t: 'j:new', session: { id, date: todayISO() } }, false)) { ui.jSession = id; ui.jSearch = ''; ui.jView = 'sessions'; render(); window.scrollTo(0, 0); }
   },
   jView(el) { ui.jView = el.dataset.v; ui.jSearch = ''; render(); },
   jGoSession(el) { ui.jView = 'sessions'; ui.jSession = el.dataset.id; ui.jSearch = ''; render(); document.querySelector('.j-page')?.scrollIntoView({ block: 'start' }); },
   npcNew() { npcDialog(null); },
-  npcOpen(el) { const n = npcOf(C(), el.dataset.id); if (n) npcDialog(n); },
-  jNpcUnlink(el) {
-    const s = C().journal.find((x) => x.id === ui.jSession); if (!s) return;
-    s.npcIds = (s.npcIds || []).filter((id) => id !== el.dataset.id); commit();
-  },
+  npcOpen(el) { const n = npcOf(J(), el.dataset.id); if (n) npcDialog(n); },
+  jNpcUnlink(el) { jApply({ t: 'j:npcUnlink', sid: ui.jSession, nid: el.dataset.id }); },
   jOpen(el) { ui.jSession = el.dataset.id; render(); if (innerWidth < 720) document.querySelector('.j-page')?.scrollIntoView({ block: 'start' }); },
   jDelete() {
-    const c = C(); const s = c.journal.find((x) => x.id === ui.jSession); if (!s) return;
-    confirmDialog('Supprimer la session', `Supprimer la session ${s.n}${s.title ? ` « ${esc(s.title)} »` : ''}, ses notes et son croquis ? C’est définitif.`, 'Supprimer', () => {
-      if (s.sketch) store.removeSketch(s.sketch);
-      c.journal = c.journal.filter((x) => x !== s); ui.jSession = null;
-      commit();
+    const s = J().journal.find((x) => x.id === ui.jSession); if (!s) return;
+    confirmDialog('Supprimer la session', `Supprimer la session ${s.n}${s.title ? ` « ${esc(s.title)} »` : ''}, ses notes et son croquis ?${jShared() ? ' Elle disparaîtra pour tout le groupe.' : ''} C’est définitif.`, 'Supprimer', () => {
+      if (s.sketch) media.remove(s.sketch);
+      ui.jSession = null;
+      jApply({ t: 'j:del', sid: s.id });
     });
   },
-  jTodo(el) {
-    const c = C(); const t = c.journal[+el.dataset.s]?.todos?.[+el.dataset.t]; if (!t) return;
-    t.done = el.checked; commit();
-  },
-  jTodoDel(el) {
-    const c = C(); const s = c.journal.find((x) => x.id === ui.jSession); if (!s) return;
-    s.todos.splice(+el.dataset.t, 1); commit();
-  },
+  jTodo(el) { jApply({ t: 'j:todoSet', sid: el.dataset.sid, tid: el.dataset.tid, v: { done: el.checked } }); },
+  jTodoDel(el) { jApply({ t: 'j:todoDel', sid: ui.jSession, tid: el.dataset.tid }); },
   jSketch() {
-    const c = C(); const s = c.journal.find((x) => x.id === ui.jSession); if (!s) return;
-    const sk = { id: R.uid(), cid: c.id, strokes: [] };
-    store.saveSketch(sk); s.sketch = sk.id; ui.skOpenFull = true; commit();
+    const s = J().journal.find((x) => x.id === ui.jSession); if (!s) return;
+    const id = R.uid();
+    media.put({ id, strokes: [] }, C().id).catch(() => toast(media.error() || 'Croquis non créé'));
+    ui.skOpenFull = true;
+    jApply({ t: 'j:sketch', sid: s.id, mid: id });
+  },
+  // Verser son journal personnel dans celui du groupe (images et croquis copiés aussi)
+  jImport() {
+    const c = C();
+    confirmDialog('Verser mon journal', `Copier tes ${c.journal.length} session(s) et ${c.npcs.length} PNJ dans le journal du groupe ? Les autres joueurs les verront. Ton journal personnel reste intact.`, 'Verser', async () => {
+      toast('Copie des images et croquis…');
+      const ids = [...c.journal.map((s) => s.sketch), ...c.npcs.map((n) => n.photo)].filter(Boolean);
+      let failed = 0;
+      for (const id of ids) { try { await media.copyToGroup(id); } catch { failed++; } }
+      // Une image ou un croquis n'a pas pu être copié : on ne verse rien (on pourra réessayer, rien n'est perdu)
+      if (failed) { toast(`Rien n’a été versé : ${failed} image(s) ou croquis non copiés (${media.error() || 'erreur'}). Réessaie une fois connecté.`); render(); return; }
+      jApply({ t: 'j:import', journal: c.journal, npcs: c.npcs });
+      toast('Journal versé dans le groupe');
+    });
   },
   skColor(el) { sketchCtl?.setColor(+el.dataset.c); syncSketchTools(); },
   skErase() { sketchCtl?.setErase(!sketchCtl.erase); syncSketchTools(); },
@@ -2645,6 +2689,7 @@ $app.addEventListener('input', (e) => {
   const el = e.target;
   if (el.id === 'libSearch') { ui.libSearch = el.value; filterLib(); return; }
   if (el.id === 'jSearch') { ui.jSearch = el.value; filterJournal(); return; }
+  if (el.dataset.jf || el.dataset.jt) { jSave(el, false); return; }
   if (!el.dataset.bind) return;
   setPath(C(), el.dataset.bind, el.hasAttribute('data-num') ? num(el.value) : el.value);
   commit(false);
@@ -2652,6 +2697,7 @@ $app.addEventListener('input', (e) => {
 $app.addEventListener('change', (e) => {
   const el = e.target;
   if (el.type === 'checkbox' && el.dataset.act) { A[el.dataset.act]?.(el); return; }
+  if (el.dataset.jf || el.dataset.jt) { jSave(el, true); return; }
   if (el.dataset.gharness) {
     gApply({ t: 'harness', id: el.dataset.gharness, to: el.value });
     return;
@@ -2675,22 +2721,17 @@ $app.addEventListener('submit', (e) => {
   if (form.dataset.form === 'jNpc') {
     e.preventDefault();
     const name = form.n.value.trim(); if (!name) return;
-    const c = C(); const s = c.journal.find((x) => x.id === ui.jSession); if (!s) return;
-    let n = c.npcs.find((x) => R.norm(x.name) === R.norm(name));
-    const isNew = !n;
-    if (!n) { n = { id: R.uid(), name, role: '', place: '', attitude: 'inconnu', notes: '', portrait: '' }; c.npcs.push(n); }
-    s.npcIds ||= [];
-    if (!s.npcIds.includes(n.id)) s.npcIds.push(n.id);
-    commit();
-    toast(isNew ? `Nouveau PNJ : ${n.name} — touche son nom pour compléter sa fiche` : `${n.name} ajouté à la session`);
+    const known = J().npcs.find((x) => R.norm(x.name) === R.norm(name));
+    const ok = known ? jApply({ t: 'j:npcLink', sid: ui.jSession, nid: known.id })
+      : jApply({ t: 'j:npcAdd', sid: ui.jSession, npc: { id: R.uid(), name, role: '', place: '', attitude: 'inconnu', notes: '' } });
+    if (ok) toast(known ? `${known.name} ajouté à la session` : `Nouveau PNJ : ${name} — touche son nom pour compléter sa fiche`);
     setTimeout(() => document.querySelector('form[data-form="jNpc"] input')?.focus());
     return;
   }
   if (form.dataset.form === 'jTodo') {
     e.preventDefault();
     const t = form.t.value.trim(); if (!t) return;
-    const s = C().journal.find((x) => x.id === ui.jSession); if (!s) return;
-    (s.todos ||= []).push({ id: R.uid(), t, done: false }); commit();
+    jApply({ t: 'j:todoAdd', sid: ui.jSession, todo: { id: R.uid(), t, done: false } });
     setTimeout(() => document.querySelector('form[data-form="jTodo"] input')?.focus());
     return;
   }
@@ -2723,7 +2764,7 @@ store.onStatus((st, info) => {
 // Groupe partagé : un autre joueur a modifié quelque chose
 group.onChange(() => {
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
-  if (ui.tab === 'groupe' && C() && !typing && !dlg.open) render();
+  if (['groupe', 'journal'].includes(ui.tab) && C() && !typing && !dlg.open && !document.querySelector('.sketch.full')) render();
 });
 
 render();

@@ -37,11 +37,12 @@ function drawStroke(g, s, k) {
 let penSeen = false; // dès qu'un stylet est utilisé, le doigt (paume posée) ne dessine plus
 
 // Monte la zone de dessin dans « wrap » (qui contient un <canvas>). sketch = { strokes: [] } (modifié sur place).
-// onSave() est appelé après chaque trait ou effacement. Renvoie des commandes pour la barre d'outils.
-export function mountSketch(wrap, sketch, onSave) {
+// onSave(ev) est appelé après chaque changement : { type: 'add', stroke } | { type: 'remove', strokes } | { type: 'clear' }
+// (le journal du groupe envoie ainsi seulement le trait concerné). Renvoie des commandes pour la barre d'outils.
+export function mountSketch(wrap, sketch, onSave, opts = {}) {
   const cv = wrap.querySelector('canvas');
   const g = cv.getContext('2d');
-  const st = { color: 0, erase: false, cur: null, pid: null, k: 1 };
+  const st = { color: 0, erase: false, cur: null, pid: null, k: 1, removed: [], mine: [], incoming: null };
   sketch.strokes ??= [];
 
   const resize = () => {
@@ -69,10 +70,10 @@ export function mountSketch(wrap, sketch, onSave) {
   const eraseAt = ([x, y]) => {
     const before = sketch.strokes.length;
     sketch.strokes = sketch.strokes.filter((s) => {
-      for (let i = 0; i < s.p.length; i += 3) if (Math.hypot(s.p[i] - x, s.p[i + 1] - y) < ERASE_R) return false;
+      for (let i = 0; i < s.p.length; i += 3) if (Math.hypot(s.p[i] - x, s.p[i + 1] - y) < ERASE_R) { st.removed.push(s); return false; }
       return true;
     });
-    if (sketch.strokes.length !== before) { redraw(); st.erased = true; }
+    if (sketch.strokes.length !== before) redraw();
   };
 
   cv.addEventListener('pointerdown', (e) => {
@@ -85,7 +86,7 @@ export function mountSketch(wrap, sketch, onSave) {
     const pt = pos(e);
     // Le bouton du stylet (ou la gomme au dos du stylet) efface aussi
     st.erasing = st.erase || e.button === 5 || (e.buttons & 32) === 32;
-    if (st.erasing) { st.erased = false; eraseAt(pt); return; }
+    if (st.erasing) { st.removed = []; eraseAt(pt); return; }
     st.cur = { c: st.color, p: pt };
     redraw();
   });
@@ -105,20 +106,38 @@ export function mountSketch(wrap, sketch, onSave) {
   const end = (e) => {
     if (e.pointerId !== st.pid) return;
     st.pid = null;
-    if (st.erasing) { st.erasing = false; if (st.erased) onSave(); return; }
-    if (st.cur) { sketch.strokes.push(st.cur); st.cur = null; redraw(); onSave(); }
+    if (st.erasing) { st.erasing = false; if (st.removed.length) onSave({ type: 'remove', strokes: st.removed }); st.removed = []; }
+    else if (st.cur) { const s = st.cur; sketch.strokes.push(s); st.mine.push(s); st.cur = null; redraw(); onSave({ type: 'add', stroke: s }); }
+    // Traits reçus d'un autre joueur pendant qu'on dessinait : appliqués maintenant
+    if (st.incoming) { const m = st.incoming; st.incoming = null; ctl.setStrokes(m); }
   };
   cv.addEventListener('pointerup', end);
   cv.addEventListener('pointercancel', end);
 
   resize();
-  return {
+  const ctl = {
     resize,
+    // Croquis mis à jour ailleurs (autre joueur) : on remplace les traits, sauf pendant un tracé
+    setStrokes(list) {
+      if (st.pid !== null) { st.incoming = list; return; }
+      sketch.strokes = list; redraw();
+    },
     setColor(i) { st.color = i; st.erase = false; },
     setErase(on) { st.erase = on; },
     get color() { return st.color; },
     get erase() { return st.erase; },
-    undo() { if (sketch.strokes.length) { sketch.strokes.pop(); redraw(); onSave(); } },
-    clear() { sketch.strokes = []; redraw(); onSave(); },
+    // Annuler : retire le dernier trait que J'AI tracé (pas celui d'un autre joueur)
+    undo() {
+      const key = (s) => JSON.stringify(s);
+      while (st.mine.length) {
+        const s = st.mine.pop(); const k = key(s);
+        const i = sketch.strokes.findIndex((x) => x === s || key(x) === k);
+        if (i >= 0) { const [r] = sketch.strokes.splice(i, 1); redraw(); onSave({ type: 'remove', strokes: [r] }); return; }
+      }
+      // Journal personnel : on peut remonter plus loin (tous les traits sont à toi)
+      if (opts.undoAny && sketch.strokes.length) { const r = sketch.strokes.pop(); redraw(); onSave({ type: 'remove', strokes: [r] }); }
+    },
+    clear() { sketch.strokes = []; st.mine = []; redraw(); onSave({ type: 'clear' }); },
   };
+  return ctl;
 }

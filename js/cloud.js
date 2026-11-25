@@ -170,6 +170,32 @@ export function watchGroup(id, onData, onError) {
   }, (e) => onError?.(e));
 }
 
+// ----- Images et croquis du groupe : groups/{code}/media/{id} -----
+// Trop lourds pour le document du groupe (1 Mo au plus) : un document chacun, sous le groupe.
+// Règle Firestore nécessaire (voir README) : lecture/écriture réservées aux membres du groupe.
+// Croquis : chaque trait est une chaîne JSON du tableau « strokes » ; ajouter/retirer un trait
+// (arrayUnion / arrayRemove) ne touche pas aux traits des autres joueurs qui dessinent en même temps.
+const mediaDoc = (g, id) => fb.doc(db, 'groups', g, 'media', id);
+const fromMedia = (id, d) => ({ id, kind: d.kind || (d.image ? 'image' : 'sketch'), image: d.image || '', strokes: (d.strokes || []).map((x) => JSON.parse(x)) });
+export async function getMedia(g, id) {
+  who();
+  const snap = await fb.getDoc(mediaDoc(g, id));
+  return snap.exists() ? fromMedia(id, snap.data()) : null;
+}
+export async function setMedia(g, id, m) {
+  who();
+  await fb.setDoc(mediaDoc(g, id), { kind: m.image ? 'image' : 'sketch', image: m.image || '', strokes: (m.strokes || []).map((s) => JSON.stringify(s)), updatedAt: Date.now() });
+}
+export async function editStrokes(g, id, mode, strokes) {
+  who();
+  const v = mode === 'clear' ? [] : mode === 'add' ? fb.arrayUnion(...strokes.map((s) => JSON.stringify(s))) : fb.arrayRemove(...strokes.map((s) => JSON.stringify(s)));
+  await fb.updateDoc(mediaDoc(g, id), { strokes: v, updatedAt: Date.now() });
+}
+export function watchMedia(g, id, onData, onError) {
+  return fb.onSnapshot(mediaDoc(g, id), (snap) => { if (snap.exists()) onData(fromMedia(id, snap.data())); }, (e) => onError?.(e));
+}
+export async function deleteMedia(g, id) { who(); await fb.deleteDoc(mediaDoc(g, id)); }
+
 export async function leaveGroup(id) {
   const u = who();
   await fb.runTransaction(db, async (tx) => {
