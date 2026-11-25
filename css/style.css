@@ -548,3 +548,7 @@ nav.tabs button span { white-space: nowrap; }
 /* Cases à cocher sur toute la largeur dans les formulaires */
 .fields .check.full { grid-column: 1 / -1; }
 .check input:disabled + span { opacity: .55; }
+
+/* Manuel */
+.manual .lib-body ul, .manual .lib-body ol { margin: 6px 0 0; padding-left: 20px; }
+.manual .lib-body li { margin: 4px 0; }

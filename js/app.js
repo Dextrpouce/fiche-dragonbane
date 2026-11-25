@@ -1,6 +1,7 @@
 import * as R from './rules.js';
 import { store } from './store.js';
 import * as L from './library.js';
+import { MANUAL } from './manual.js';
 
 // ================= Utilitaires =================
 const $app = document.getElementById('app');
@@ -1475,10 +1476,19 @@ const A = {
         <button type="button" data-m="exportAll">${icon('down')} Exporter tous les personnages</button>
         <button type="button" data-m="importFile">${icon('upload')} Importer un fichier</button>
         <button type="button" data-m="cloudMenu">${icon('cloud')} Sauvegarde en ligne</button>
+        <button type="button" data-m="manual">${icon('book')} Manuel d’utilisation</button>
       </div>
       <p class="small muted center">Fiche Dragonbane · fonctionne hors ligne</p>`,
       actions: [closeBtn],
       onOpen: (f) => f.querySelectorAll('[data-m]').forEach((b) => { b.onclick = () => { dlg.close(); setTimeout(() => A[b.dataset.m]()); }; }),
+    });
+  },
+  manual() {
+    openDialog({
+      title: 'Manuel d’utilisation',
+      cls: 'manual',
+      body: `<p class="small muted">Touche un sujet pour l’ouvrir.</p>${MANUAL.map(([t, h], n) => `<details class="lib-item"${n === 0 ? ' open' : ''}><summary><b>${esc(t)}</b></summary><div class="lib-body">${h}</div></details>`).join('')}`,
+      actions: [closeBtn],
     });
   },
   characters() {

@@ -1,0 +1,70 @@
+// Manuel utilisateur affiché depuis le menu : [titre, contenu HTML]
+export const MANUAL = [
+  ['Pour commencer', `
+    <p>Ouvre le <b>menu</b> (bouton ⋮ en haut) › <b>Nouveau personnage</b>. Donne un nom, choisis le peuple, l’âge et la profession (et l’école pour un mage), puis saisis les attributs ou tire-les (4D6, on garde les 3 meilleurs).</p>
+    <p>Coche ensuite les compétences entraînées : 6 de ta profession, plus 2, 4 ou 6 selon l’âge.</p>
+    <p>Le personnage s’ouvre en <b>mode libre</b> : complète ce qui manque, puis touche <b>Terminer</b>.</p>`],
+  ['Les trois modes', `
+    <p>Le bouton en haut de l’écran change de mode :</p>
+    <ul>
+      <li><b>Jeu</b> : toucher un attribut ou une compétence lance le D20.</li>
+      <li><b>Progression</b> : toucher une compétence place ou retire la coche d’amélioration.</li>
+      <li><b>Libre</b> : tout se modifie directement (valeurs, nom, identité…). Pratique pour corriger une erreur.</li>
+    </ul>`],
+  ['Lancer un dé', `
+    <p>Touche une compétence : la fenêtre de jet s’ouvre. Ajoute des <b>avantages</b> ou des <b>désavantages</b> si le MJ le demande (ils s’annulent entre eux), puis lance.</p>
+    <p>Réussite si le dé est inférieur ou égal au niveau. <b>1 = Dragon</b>, <b>20 = Démon</b> : la compétence est cochée toute seule.</p>
+    <p>Raté ? Tu peux <b>forcer le jet</b> en choisissant un état (impossible sur un Démon).</p>
+    <p>Tes états, ton armure et la musique du barde ajoutent leurs avantages ou désavantages automatiquement.</p>`],
+  ['Jouer avec tes propres dés', `
+    <p>À droite de chaque compétence, le losange vide <b>✧</b>. Tu as fait un Dragon ou un Démon avec tes dés ? Touche-le et confirme : la compétence est cochée <b>✦</b>.</p>`],
+  ['Fiche', `
+    <p>Tes attributs, compétences et capacités. En haut, le résumé : PV, PVol, déplacement, bonus aux dégâts et charge.</p>
+    <p>Les boutons au-dessus des compétences filtrent la liste : toutes, entraînées, armes ou cochées ✦.</p>`],
+  ['Combat', `
+    <p>Tout ce qu’il faut pendant un combat, sans rien modifier par erreur :</p>
+    <ul>
+      <li><b>États</b> : touche un état pour le prendre ou l’enlever. L’interrupteur <b>Musique du barde</b> donne un avantage à tous tes jets tant qu’il est allumé.</li>
+      <li><b>PV et PVol</b> : boutons − et + pour suivre les dégâts et les dépenses. À 0 PV, les <b>jets de mort</b> apparaissent.</li>
+      <li><b>Armes</b> : Attaquer, Parer, Dégâts, ou <b>🗡 Sournoise</b> pour une attaque par surprise (jet de Discrétion d’abord). Esquiver est en dessous.</li>
+      <li><b>Capacités</b> : tes capacités utiles en combat, avec un bouton qui dépense les PVol.</li>
+      <li><b>Repos</b> : round, court ou long. L’appli retient ceux déjà pris dans le quart.</li>
+    </ul>`],
+  ['Magie', `
+    <p>Visible si tu connais une école. Les <b>tours</b> coûtent 1 PVol et réussissent toujours. Les <b>sorts</b> coûtent 2 PVol par niveau de puissance.</p>
+    <p>Marque les sorts <b>préparés</b> : leur nombre est limité par la chance de base de ton INT.</p>`],
+  ['Sac', `
+    <ul>
+      <li><b>Armes</b> (3 à portée de main au plus) et <b>armure / casque</b> : ajoute-les ici, choisis-les dans la liste pour tout remplir d’un coup.</li>
+      <li><b>Bourse</b> : or, argent, cuivre. Les dépenses rendent la monnaie toutes seules.</li>
+      <li><b>Équipement</b> : « Choisir dans la liste de matériel » remplit nom et encombrement, et peut payer avec ta bourse. L’ajout rapide (« Corde », « Rations x4 ») marche aussi.</li>
+      <li>La barre d’<b>encombrement</b> vire au rouge si tu portes trop (FOR ÷ 2, +2 avec un sac à dos).</li>
+    </ul>`],
+  ['Progrès', `
+    <p>À la fin de la séance :</p>
+    <ol>
+      <li>Touche <b>Questions de fin de séance</b> et réponds : chaque « oui » donne une coche à placer.</li>
+      <li>Passe en mode <b>Progression</b> et touche les compétences à cocher.</li>
+      <li>Touche <b>Jets d’amélioration</b> : D20 plus grand que le niveau = +1 (18 au plus).</li>
+    </ol>
+    <p>Une erreur ? Le bouton <b>↶</b> de l’historique annule la dernière opération.</p>`],
+  ['Carnet', `
+    <p>Identité, faiblesse, apparence, souvenir, compagnons et notes libres. L’identité se modifie en mode libre.</p>`],
+  ['Groupe', `
+    <ul>
+      <li><b>Caisse</b> : Recette ou Dépense. Coche la case pour prendre l’argent dans ta bourse ou l’y verser. Chaque ligne du journal s’annule avec ↶.</li>
+      <li><b>Montures et véhicules</b> : chaque âne et le char ont leur chargement. Ajoute des sacoches de selle (+2), attelle un âne au char avec le harnais.</li>
+      <li>Touche un objet pour le déplacer vers un autre transport ou ton sac, ou le marquer <b>à vendre</b> avec sa valeur.</li>
+      <li><b>À vendre</b> : la liste de ce qu’on ne garde pas et son total. « Vendu » verse le prix dans la caisse.</li>
+    </ul>`],
+  ['Biblio', `
+    <p>Pour consulter : armes, armures, matériel, sorts, tours et capacités. Choisis une rubrique ou tape un mot dans la recherche, puis touche une ligne pour voir le détail.</p>
+    <p>Les noms sont des traductions libres et les effets sont résumés : le livre fait foi.</p>`],
+  ['Sauvegarde et appareils', `
+    <p>Tout est enregistré sur l’appareil : l’appli marche <b>sans internet</b>.</p>
+    <p>Menu › <b>Sauvegarde en ligne</b> : connecte-toi avec Google pour retrouver tes personnages et le groupe sur tous tes appareils. La pastille du nuage indique l’état : verte = à jour, jaune = en attente d’envoi, rouge = connexion à refaire.</p>
+    <p>Si tu modifies le même personnage sur deux appareils hors ligne, c’est la dernière modification qui gagne.</p>
+    <p>Menu › <b>Exporter</b> crée un fichier de sauvegarde, <b>Importer</b> le recharge.</p>`],
+  ['Installer sur le téléphone', `
+    <p>Dans Chrome, ouvre le site puis menu <b>⋮</b> › <b>Installer l’application</b>. Elle s’ouvre ensuite comme une appli normale et se met à jour toute seule quand tu as du réseau.</p>`],
+];
