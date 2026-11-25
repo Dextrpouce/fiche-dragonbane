@@ -82,4 +82,7 @@ export const MANUAL = [
     <p>Menu › <b>Exporter</b> crée un fichier de sauvegarde, <b>Importer</b> le recharge.</p>`],
   ['Installer sur le téléphone', `
     <p>Dans Chrome, ouvre le site puis menu <b>⋮</b> › <b>Installer l’application</b>. Elle s’ouvre ensuite comme une appli normale et se met à jour toute seule quand tu as du réseau.</p>`],
+  ['Crédits', `
+    <p>Pictogrammes des montures et véhicules : <b>game-icons.net</b>, sous licence <b>CC BY 3.0</b> (creativecommons.org/licenses/by/3.0) — tête d’âne et chevalier monté par <b>Skoll</b> ; tête de cheval, chariot bâché et barque par <b>Delapouite</b> ; roue de charrette, coffre et sac par <b>Lorc</b>.</p>
+    <p>Règles : Dragonbane (Free League Publishing). Noms et effets résumés librement : le livre fait foi.</p>`],
 ];

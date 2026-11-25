@@ -773,6 +773,7 @@ body.no-scroll { overflow: hidden; }
 .hist-link .btn, .hist-mini { opacity: .8; }
 .hist-mini { margin: -4px 0 10px; }
 @media (max-width: 560px) { .log-row.hist-row { grid-template-columns: 58px 22px 1fr auto 30px; font-size: 13px; } }
-/* Pictogrammes des transports (profil, 64 × 48) */
-.carrier-ico .ci { width: 50px; height: 38px; stroke-width: 1.7; }
-.sale-main small .ci { width: 22px; height: 17px; vertical-align: -4px; stroke-width: 2.2; }
+/* Pictogrammes des transports : icônes game-icons.net (pleines) */
+.i.gi { fill: currentColor; stroke: none; }
+.carrier-ico .gi { width: 42px; height: 42px; }
+.sale-main small .gi { width: 18px; height: 18px; vertical-align: -4px; }

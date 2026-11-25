@@ -82,6 +82,10 @@ Si tu modifies le même personnage sur deux appareils sans réseau, c'est la ver
 
 Les noms français (compétences, états, capacités) sont des traductions libres et se modifient dans l'appli.
 
+## Crédits
+
+- Pictogrammes des montures et véhicules : [game-icons.net](https://game-icons.net), licence [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) — *donkey* et *mounted-knight* par Skoll, *horse-head*, *old-wagon* et *wood-canoe* par Delapouite, *cartwheel*, *locked-chest* et *knapsack* par Lorc. Tracés repris tels quels, recolorés.
+
 ## Tester sur ton PC
 
 ```bash
