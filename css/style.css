@@ -844,3 +844,6 @@ body.no-scroll { overflow: hidden; }
 .pres-slot:empty { display: none; }
 .pres-slot { margin: 0 0 6px; }
 @keyframes presPulse { 50% { opacity: .55; } }
+.death-real { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.death-real .dragon-btn { color: #12665a; }
+.death-real .demon-btn { color: #9b2c22; }

@@ -28,7 +28,7 @@ export const MANUAL = [
     <p>Tout ce qu’il faut pendant un combat, sans rien modifier par erreur :</p>
     <ul>
       <li><b>États</b> : touche un état pour le prendre ou l’enlever. L’interrupteur <b>Musique du barde</b> donne un avantage à tous tes jets tant qu’il est allumé.</li>
-      <li><b>PV et PVol</b> : boutons − et + pour suivre les dégâts et les dépenses. À 0 PV, les <b>jets de mort</b> apparaissent.</li>
+      <li><b>PV et PVol</b> : boutons − et + pour suivre les dégâts et les dépenses. À 0 PV, les <b>jets de mort</b> apparaissent : lance-les avec l’appli, ou avec tes dés et indique le résultat (Réussite, Échec, Dragon, Démon ; à la troisième réussite, choisis les PV du D6).</li>
       <li><b>Armes</b> : Attaquer, Parer, Dégâts, ou <b>🗡 Sournoise</b> pour une attaque par surprise (jet de Discrétion d’abord). Esquiver est en dessous.</li>
       <li><b>Capacités</b> : tes capacités utiles en combat, avec un bouton qui dépense les PVol.</li>
       <li><b>Repos</b> : round, court ou long. L’appli retient ceux déjà pris dans le quart.</li>

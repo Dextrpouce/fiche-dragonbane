@@ -1,5 +1,5 @@
 // Service worker : garde l'appli en cache pour qu'elle fonctionne sans internet.
-const VERSION = 'v66';
+const VERSION = 'v67';
 const CACHE = `dragonbane-${VERSION}`;
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/style.css',

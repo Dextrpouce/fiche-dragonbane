@@ -230,6 +230,18 @@ function confirmDialog(title, text, okLabel, onOk) {
   openDialog({ title, body: `<p>${text}</p>`, actions: [cancel, { label: okLabel, primary: true, onClick: onOk }] });
 }
 
+// Jet de mort : un Dragon compte deux réussites, un Démon deux échecs ; trois réussites rendent h PV (D6)
+function deathApply(c, r, h) {
+  const n = r.dragon || r.demon ? 2 : 1;
+  if (r.success) c.death.succ = Math.min(3, c.death.succ + n); else c.death.fail = Math.min(3, c.death.fail + n);
+  if (c.death.succ >= 3 && c.death.fail < 3) {
+    c.hp.cur = Math.min(R.maxHP(c), h);
+    c.death = { succ: 0, fail: 0 };
+    return `<b>Trois réussites : tu récupères ${h} PV (D6).</b>`;
+  }
+  return c.death.fail >= 3 ? '<b class="bad">Trois échecs : ton personnage meurt.</b>' : `Réussites ${c.death.succ}/3 · Échecs ${c.death.fail}/3`;
+}
+
 // ================= Journal =================
 function logEntry(c, label, undo = null) {
   c.log.unshift({ id: R.uid(), date: Date.now(), label, undo });
@@ -470,6 +482,9 @@ function viewCombat(c) {
       <div class="death-row"><span>Échecs</span>${[0, 1, 2].map((i) => `<i class="pip ko ${i < c.death.fail ? 'on' : ''}"></i>`).join('')}</div>
       ${c.death.fail >= 3 ? '<p class="verdict demon">Ton personnage est mort.</p>' : c.death.succ >= 3 ? '<p class="verdict dragon">Hors de danger.</p>' : ''}
       <div class="add-row"><button class="btn" data-act="deathRoll" ${c.death.fail >= 3 || c.death.succ >= 3 ? 'disabled' : ''}>${icon('d20')} Jet de mort (CON ${c.attrs.CON})</button><button class="btn ghost small" data-act="deathReset">Remettre à zéro</button></div>
+      ${c.death.fail >= 3 || c.death.succ >= 3 ? '' : `<div class="death-real"><span class="small muted">Avec tes dés (D20 ≤ ${c.attrs.CON}) :</span>
+        <button class="btn small ghost" data-act="deathReal" data-r="ok">✓ Réussite</button><button class="btn small ghost" data-act="deathReal" data-r="ko">✗ Échec</button>
+        <button class="btn small ghost dragon-btn" data-act="deathReal" data-r="dragon">Dragon (1)</button><button class="btn small ghost demon-btn" data-act="deathReal" data-r="demon">Démon (20)</button></div>`}
     </section>` : '';
 
   const conds = R.ATTRS.map((a) => `<button class="cond-chip ${c.conditions[a.key] ? 'on' : ''}" data-act="cond" data-k="${a.key}"><b>${a.cond}</b><small>${a.key}</small></button>`).join('');
@@ -3236,18 +3251,29 @@ const A = {
   deathRoll() {
     const c = C();
     openRoll({ title: 'Jet de mort', target: c.attrs.CON, attr: 'CON', noPush: true, once: true, note: `Réussites ${c.death.succ}/3 · Échecs ${c.death.fail}/3 · un Dragon compte double, un Démon aussi`, onResult: (r, st) => {
-      const n = r.dragon || r.demon ? 2 : 1;
-      if (r.success) c.death.succ = Math.min(3, c.death.succ + n); else c.death.fail = Math.min(3, c.death.fail + n);
-      if (c.death.succ >= 3 && c.death.fail < 3) {
-        const h = R.d(6);
-        c.hp.cur = Math.min(R.maxHP(c), h);
-        c.death = { succ: 0, fail: 0 };
-        st.msg = `<b>Trois réussites : tu récupères ${h} PV (D6).</b>`;
-      } else {
-        st.msg = c.death.fail >= 3 ? '<b class="bad">Trois échecs : ton personnage meurt.</b>' : `Réussites ${c.death.succ}/3 · Échecs ${c.death.fail}/3`;
-      }
+      st.msg = deathApply(c, r, R.d(6));
       commit(false);
     } });
+  },
+  // Jet de mort fait avec de vrais dés : on indique le résultat
+  deathReal(el) {
+    const c = C(); const k = el.dataset.r;
+    const r = { success: k === 'ok' || k === 'dragon', dragon: k === 'dragon', demon: k === 'demon' };
+    const n = r.dragon || r.demon ? 2 : 1;
+    const label = { ok: 'réussite', ko: 'échec', dragon: 'Dragon (2 réussites)', demon: 'Démon (2 échecs)' }[k];
+    // Troisième réussite : les PV récupérés se lancent aussi (D6)
+    if (r.success && c.death.succ + n >= 3 && c.death.fail < 3) {
+      openDialog({
+        title: 'Hors de danger',
+        body: `<p>Trois réussites ! Lance un <b>D6</b> : combien de PV récupères-tu ?</p><div class="add-row center-row">${[1, 2, 3, 4, 5, 6].map((h) => `<button type="button" class="btn" data-h="${h}">${h}</button>`).join('')}</div>`,
+        actions: [cancel, { label: `${icon('d20')} Lancer pour moi`, cls: 'ghost', onClick: () => { const h = R.d(6); toast(deathApply(c, r, h).replace(/<[^>]+>/g, '')); logEntry(c, `Jet de mort (dés) : ${label}`); commit(); } }],
+        onOpen: (f) => f.querySelectorAll('[data-h]').forEach((b) => { b.onclick = () => { dlg.close(); toast(deathApply(c, r, +b.dataset.h).replace(/<[^>]+>/g, '')); logEntry(c, `Jet de mort (dés) : ${label}`); commit(); }; }),
+      });
+      return;
+    }
+    const msg = deathApply(c, r, 0);
+    logEntry(c, `Jet de mort (dés) : ${label}`);
+    commit(); toast(msg.replace(/<[^>]+>/g, ''));
   },
   deathReset() { C().death = { succ: 0, fail: 0 }; commit(); },
   rest(el) {
