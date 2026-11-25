@@ -17,7 +17,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', 
 // Personnage affiché : le tien, ou celui d'un joueur absent que tu joues (ui.guest, voir « Personnages prêtés »)
 let mjStubObj = null;
 // MJ sans personnage à lui : une fiche vide en mémoire (jamais enregistrée), pour que l'appli fonctionne
-const mjStub = () => (mjStubObj ||= Object.assign(R.newCharacter({ name: 'Meneur de jeu' }), { id: '__mj', stub: true }));
+const mjStub = () => (mjStubObj ||= Object.assign(R.upgradeCharacter(R.newCharacter({ name: 'Meneur de jeu' })), { id: '__mj', stub: true }));
 const C = () => ui.mjView || ui.guest || store.current() || (isMJ() ? mjStub() : null);
 const num = (v) => (v === '' || v == null || isNaN(+v) ? 0 : +v);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -1410,6 +1410,18 @@ function mjWatch() {
     }));
   }
 }
+// Notes secrètes des joueurs sur une session (s), un PNJ (n) ou un lieu (l) : visibles par le MJ seulement
+function mjSecrets(kind, id) {
+  if (!isMJ()) return [];
+  const members = group.shared.members || {};
+  return Object.entries(mjData).flatMap(([owner, list]) => (list || []).map((ch) => ({ ch, player: members[owner] || '', t: ch.secret?.[kind]?.[id] })).filter((x) => x.t));
+}
+function mjSecretBlock(kind, id) {
+  const list = mjSecrets(kind, id);
+  if (!list.length) return '';
+  return `<div class="mj-secrets full"><p class="small"><b>👑 Secrets des joueurs</b> <span class="muted">(visibles par toi seul)</span></p>
+    ${list.map(({ ch, player, t }) => `<p class="small mj-secret"><b>${esc(ch.name)}</b>${player ? ` <span class="muted">(${esc(player)})</span>` : ''} : ${esc(t)}</p>`).join('')}</div>`;
+}
 const MJ_SKILLS = ['vigilance', 'esquive', 'discretion', 'fouille', 'persuasion', 'bluff', 'soins'];
 function mjCard(ch, player, owner) {
   const hpMax = R.maxHP(ch); const wpMax = R.maxWP(ch);
@@ -1701,7 +1713,8 @@ function npcCards(j) {
       </button>
       ${n.place ? `<p class="small npc-place">📍 ${esc(n.place)}</p>` : ''}
       ${n.notes ? `<p class="small npc-notes">${esc(n.notes)}</p>` : ''}
-      ${group.shared && C().secret.n[n.id] ? `<p class="small npc-notes npc-secret">🔒 ${esc(C().secret.n[n.id])}</p>` : ''}
+      ${group.shared && C().secret?.n?.[n.id] ? `<p class="small npc-notes npc-secret">🔒 ${esc(C().secret.n[n.id])}</p>` : ''}
+      ${mjSecretBlock('n', n.id)}
       ${jEd(n, 'fiche')}
       ${seen.length ? `<div class="npc-seen"><small class="muted">Rencontré :</small>${seen.map((s) => `<button class="chip" data-act="jGoSession" data-id="${s.id}" title="${esc(s.title || '')}">S${s.n}</button>`).join('')}</div>` : ''}
     </article>`;
@@ -1733,8 +1746,9 @@ function npcDialog(npc, linkTo = null) {
         ${F.select('attitude', 'Attitude envers le groupe', cur.attitude, Object.entries(NPC_ATT).map(([k, [l]]) => [k, l]))}
         ${F.text('place', 'Où le trouver', cur.place, '', 'placeholder="Ex. Atelier près du port"')}
         ${F.area('notes', group.shared ? 'Notes (partagées avec le groupe)' : 'Notes', cur.notes)}
-        ${group.shared ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label><textarea name="secret" rows="2">${esc(C().secret.n[npc?.id] || '')}</textarea></div>` : ''}
+        ${group.shared && !C().stub ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label><textarea name="secret" rows="2">${esc(C().secret.n[npc?.id] || '')}</textarea></div>` : ''}
       </div>
+      ${npc ? mjSecretBlock('n', npc.id) : ''}
       ${seen.length ? `<p class="small muted">Rencontré : ${seen.map((s) => `Session ${s.n}${s.title ? ` (${esc(s.title)})` : ''}`).join(', ')}</p>` : ''}
       ${img ? '<label class="check"><input type="checkbox" name="noPhoto"><span>Retirer l’image</span></label>' : ''}
       <div class="npc-zoom" hidden><img alt=""><small>Touche pour fermer</small></div>`,
@@ -1793,7 +1807,7 @@ const placeSessions = (j, id) => j.journal.filter((s) => (s.placeIds || []).incl
 const placeImg = (l) => (l.photo && media.get(l.photo)?.image) || '';
 function placeCards(j) {
   if (!j.lieux.length) return '<div class="empty">Aucun lieu pour l’instant. Crée-les ici ou depuis une session (« Lieux visités »).</div>';
-  const sec = group.shared ? C().secret.l : {};
+  const sec = group.shared ? (C().secret?.l || {}) : {};
   return `<div class="npc-grid">${[...j.lieux].sort((a, b) => a.name.localeCompare(b.name, 'fr')).map((l) => {
     const [kind, ico] = PLACE_KINDS[l.kind] || PLACE_KINDS.autre;
     const seen = placeSessions(j, l.id);
@@ -1806,6 +1820,7 @@ function placeCards(j) {
       </button>
       ${l.notes ? `<p class="small npc-notes">${esc(l.notes)}</p>` : ''}
       ${sec[l.id] ? `<p class="small npc-notes npc-secret">🔒 ${esc(sec[l.id])}</p>` : ''}
+      ${mjSecretBlock('l', l.id)}
       ${jEd(l, 'fiche')}
       ${npcs.length ? `<div class="npc-seen"><small class="muted">PNJ sur place :</small>${npcs.map((n) => `<button class="chip" data-act="npcOpen" data-id="${n.id}">${esc(n.name)}</button>`).join('')}</div>` : ''}
       ${seen.length ? `<div class="npc-seen"><small class="muted">Visité :</small>${seen.map((s) => `<button class="chip" data-act="jGoSession" data-id="${s.id}" title="${esc(s.title || '')}">S${s.n}</button>`).join('')}</div>` : ''}
@@ -1837,9 +1852,10 @@ function placeDialog(lieu, linkTo = null) {
       <div class="fields">
         ${F.text('where', 'Où, comment y aller', cur.where, 'full', 'placeholder="Ex. Deux jours au nord, après le pont"')}
         ${F.area('notes', group.shared ? 'Notes (partagées avec le groupe)' : 'Notes', cur.notes)}
-        ${group.shared ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label><textarea name="secret" rows="2">${esc(C().secret.l[lieu?.id] || '')}</textarea></div>` : ''}
+        ${group.shared && !C().stub ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label><textarea name="secret" rows="2">${esc(C().secret.l[lieu?.id] || '')}</textarea></div>` : ''}
       </div>
       ${j.npcs.length ? `<p class="small"><b>PNJ sur place</b></p><div class="place-npcs">${j.npcs.map((n) => `<label class="check"><input type="checkbox" name="npc_${n.id}" ${(cur.npcIds || []).includes(n.id) ? 'checked' : ''}><span>${esc(n.name)}</span></label>`).join('')}</div>` : ''}
+      ${lieu ? mjSecretBlock('l', lieu.id) : ''}
       ${seen.length ? `<p class="small muted">Visité : ${seen.map((s) => `Session ${s.n}${s.title ? ` (${esc(s.title)})` : ''}`).join(', ')}</p>` : ''}
       ${img ? '<label class="check"><input type="checkbox" name="noPhoto"><span>Retirer l’image</span></label>' : ''}
       <div class="npc-zoom" hidden><img alt=""><small>Touche pour fermer</small></div>`,
@@ -1975,6 +1991,7 @@ function viewJournal(c) {
             ${cur.places ? `<label class="small muted">Notes</label>${jField(sid, 'places', cur.places, 'rows="2"', true)}` : ''}
           </div>
           <div class="field"><label>Butin et récompenses ${jEd(cur, 'loot')}</label>${jField(sid, 'loot', cur.loot, 'rows="3" placeholder="Pièces, objets trouvés, promesses…"', true)}</div>
+          ${mjSecretBlock('s', sid)}
           ${sh && !c.stub ? `<div class="field full j-secret"><label>🔒 Mes notes secrètes <small>visibles par toi seul</small></label>${bind(`secret.s.${sid}`, c.secret.s[sid] || '', 'area', 'rows="3" placeholder="Ce que tu gardes pour toi : soupçons, plans, secrets de ton personnage…"')}</div>` : ''}
         </div>
         <h3>Pistes et choses à faire</h3>
