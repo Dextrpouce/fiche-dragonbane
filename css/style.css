@@ -824,3 +824,11 @@ body.no-scroll { overflow: hidden; }
 .mj-link { margin-top: 6px; }
 .mj-link summary { cursor: pointer; color: var(--ink-soft); }
 .mj-member { margin: 4px 0 0 12px; }
+/* Sélecteur « Personnages et parties » : un bloc par groupe */
+.pick-dlg { max-width: 560px; }
+.pick-group { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; margin: 0 0 10px; background: rgba(255, 255, 255, .18); }
+.pick-group.active { border-color: rgba(154, 108, 18, .6); background: rgba(255, 236, 180, .25); }
+.pick-head { display: flex; flex-direction: column; margin: 0 0 6px; }
+.pick-head b { font-family: var(--font-title); font-weight: 400; font-size: 18px; color: var(--red); }
+.pick-head small { color: var(--ink-soft); font-size: 12px; }
+.pick-group .menu-list { gap: 4px; }

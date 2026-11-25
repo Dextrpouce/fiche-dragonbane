@@ -324,6 +324,8 @@ export const group = {
   get state() { return viewState(); },
   get pending() { return queue.filter((q) => qOf(q) === cur?.id).length; },
   get list() { return mine; },
+  // Dernier état connu d'un de mes groupes (le groupe actif, ou celui gardé en cache)
+  cached(id) { return id === cur?.id ? viewState() : (cache[id]?.state || null); },
   get error() { return cur ? (error || (!navigator.onLine ? 'Hors ligne' : !cloud.user() ? 'Connexion au nuage en attente' : '')) : ''; },
   get online() { return !!cloud.user() && navigator.onLine; },
   onChange(fn) { listeners.add(fn); },

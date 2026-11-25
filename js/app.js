@@ -2837,19 +2837,35 @@ const A = {
   characters() {
     const cur = C(); const sh = group.shared;
     const mine = new Set(store.list().map((c) => c.id));
-    const lent = sh ? (G().persos || []).filter((p) => !mine.has(p.id)) : [];
     const groupName = (id) => group.list.find((r) => r.id === id)?.name || '';
-    const mjGroups = group.list.filter((r) => r.role === 'mj');
+    // Partie d'un personnage : celle qu'il a retenue (sinon le groupe actif, si je n'en suis pas le MJ)
+    const gOf = (c) => c.groupId || (sh && !isMJ() ? sh.id : null);
+    const charRow = (c, gid) => `<div class="char-row"><button type="button" data-id="${c.id}" class="${c.id === cur?.id && !cur?.stub ? 'on' : ''}"><span class="crest small">${esc((c.name || '?').charAt(0).toUpperCase())}</span><span><b>${esc(c.name || 'Sans nom')}</b><small>${esc([R.kinName(c), R.profName(c)].filter(Boolean).join(' · '))}</small></span></button>
+        ${sh && gid === sh.id ? `<label class="check lend-check" title="Si tu es absent, les autres joueurs du groupe pourront le jouer (mode Jeu uniquement)"><input type="checkbox" data-lend="${c.id}" ${lentHere(c) ? 'checked' : ''}><span>Prêter</span></label>` : ''}</div>`;
+    // Un bloc par groupe : mener la partie (MJ), mes personnages, les personnages prêtés
+    const blocks = group.list.map((r) => {
+      const st = group.cached(r.id);
+      const chars = store.list().filter((c) => gOf(c) === r.id);
+      const lent = (st?.persos || []).filter((p) => !mine.has(p.id));
+      const active = sh?.id === r.id;
+      return `<section class="pick-group ${active ? 'active' : ''}">
+        <div class="pick-head"><b>${esc(r.name)}</b><small>code ${esc(r.id)}${r.role === 'mj' ? ' · 👑 tu es le MJ' : ''}${active ? ' · partie affichée' : ''}</small></div>
+        <div class="menu-list">
+          ${r.role === 'mj' ? `<button type="button" data-mjg="${r.id}" class="${cur?.stub && active ? 'on' : ''}"><span class="crest small">👑</span><span><b>Mener la partie</b><small>Onglets MJ, Journal, Groupe, Biblio</small></span></button>` : ''}
+          ${chars.map((c) => charRow(c, r.id)).join('')}
+          ${lent.map((p) => `<button type="button" data-guest="${p.id}" data-gid="${r.id}" class="${ui.guest?.id === p.id ? 'on' : ''}"><span class="crest small">🎭</span><span><b>${esc(p.name)}</b><small>prêté · joueur : ${esc(p.owner || '?')}</small></span><span class="btn small">Jouer</span></button>`).join('')}
+          ${r.role !== 'mj' && !chars.length && !lent.length ? '<p class="small muted">Aucun personnage dans ce groupe.</p>' : ''}
+        </div>
+      </section>`;
+    }).join('');
+    const loose = store.list().filter((c) => !gOf(c) || !group.list.some((r) => r.id === gOf(c)));
     openDialog({
       title: 'Personnages et parties',
-      body: `<h3>Mes personnages</h3>
-        <div class="menu-list">${store.list().map((c) => `<div class="char-row"><button type="button" data-id="${c.id}" class="${c.id === cur?.id ? 'on' : ''}"><span class="crest small">${esc((c.name || '?').charAt(0).toUpperCase())}</span><span><b>${esc(c.name || 'Sans nom')}</b><small>${esc([R.kinName(c), R.profName(c)].filter(Boolean).join(' · '))}${c.groupId && groupName(c.groupId) ? ` · partie « ${esc(groupName(c.groupId))} »` : ''}</small></span></button>
-          ${sh && (!c.groupId || c.groupId === sh.id) && !(isMJ() && !c.groupId) ? `<label class="check lend-check" title="Si tu es absent, les autres joueurs du groupe pourront le jouer (mode Jeu uniquement)"><input type="checkbox" data-lend="${c.id}" ${lentHere(c) ? 'checked' : ''}><span>Prêter au groupe</span></label>` : ''}</div>`).join('') || '<p class="small muted">Aucun personnage.</p>'}</div>
-        ${mjGroups.length ? `<h3>Parties où je suis MJ</h3>
-          <div class="menu-list">${mjGroups.map((r) => `<button type="button" data-mjg="${r.id}" class="${cur?.stub && sh?.id === r.id ? 'on' : ''}"><span class="crest small">👑</span><span><b>${esc(r.name)}</b><small>Meneur de jeu · code ${esc(r.id)}</small></span></button>`).join('')}</div>` : ''}
-        ${sh ? `<h3>Personnages prêtés par le groupe</h3>
-          ${lent.length ? `<div class="menu-list">${lent.map((p) => `<button type="button" data-guest="${p.id}" class="${ui.guest?.id === p.id ? 'on' : ''}"><span class="crest small">🎭</span><span><b>${esc(p.name)}</b><small>${esc(p.sub || '')} · joueur : ${esc(p.owner || '?')}</small></span><span class="btn small">Jouer</span></button>`).join('')}</div>`
-            : '<p class="small muted">Aucun pour l’instant. Un joueur qui sera absent coche « Prêter au groupe » sur son personnage : vous pourrez alors le jouer à sa place (mode Jeu uniquement).</p>'}` : ''}`,
+      cls: 'pick-dlg',
+      body: `${blocks}
+        ${loose.length || !group.list.length ? `<section class="pick-group"><div class="pick-head"><b>${group.list.length ? 'Sans groupe' : 'Mes personnages'}</b>${group.list.length ? '<small>pas encore joués dans un groupe partagé</small>' : ''}</div>
+          <div class="menu-list">${loose.map((c) => charRow(c, null)).join('') || '<p class="small muted">Aucun personnage.</p>'}</div></section>` : ''}
+        <p class="small muted">Les personnages prêtés se jouent en mode Jeu uniquement, à la place d’un joueur absent.</p>`,
       actions: [{ label: '👑 MJ d’une partie…', cls: 'ghost', onClick: () => { setTimeout(() => A.mjJoin()); } }, 'spacer', closeBtn, { label: `${icon('plus')} Nouveau`, primary: true, onClick: () => { setMjActive(false); setTimeout(creationDialog); } }],
       onOpen: (f) => {
         f.querySelectorAll('[data-id]').forEach((b) => { b.onclick = () => {
@@ -2867,7 +2883,7 @@ const A = {
           group.switchTo(b.dataset.mjg); setMjActive(true); ui.tab = 'mj'; ui.mode = 'normal';
           dlg.close(); render(); window.scrollTo(0, 0);
         }; });
-        f.querySelectorAll('[data-guest]').forEach((b) => { b.onclick = () => { dlg.close(); guestStart(b.dataset.guest); }; });
+        f.querySelectorAll('[data-guest]').forEach((b) => { b.onclick = () => { dlg.close(); setMjActive(false); if (b.dataset.gid && b.dataset.gid !== group.shared?.id) group.switchTo(b.dataset.gid); guestStart(b.dataset.guest); }; });
         f.querySelectorAll('[data-lend]').forEach((x) => { x.onchange = () => { const c = store.list().find((y) => y.id === x.dataset.lend); if (c) lendToggle(c, x.checked); }; });
       },
     });
