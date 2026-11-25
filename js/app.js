@@ -1284,9 +1284,10 @@ function viewProg(c) {
       </ol>
       <div class="add-row">
         <button class="btn" data-act="endSession">${icon('check')} Questions de fin de séance</button>
-        <button class="btn gold" data-act="advanceRolls" ${marked.length ? '' : 'disabled'}>${icon('d20')} Jets d’amélioration</button>
+        ${ui.guest ? '' : `<button class="btn gold" data-act="advanceRolls" ${marked.length ? '' : 'disabled'}>${icon('d20')} Jets d’amélioration</button>`}
       </div>
-      ${c.pendingMarks ? `<p class="small"><b>${c.pendingMarks}</b> coche${c.pendingMarks > 1 ? 's' : ''} à placer : passe en mode <b>Progression</b> et touche les compétences dans la Fiche. <button class="btn small gold" data-act="setMode" data-m="prog">Placer</button></p>` : ''}
+      ${ui.guest ? `<p class="small muted">🎭 Tu joues ce personnage à la place de son joueur : réponds aux questions pour lui. C’est <b>son joueur</b> qui placera les coches et fera les jets d’amélioration.</p>${c.pendingMarks ? `<p class="small"><b>${c.pendingMarks}</b> coche${c.pendingMarks > 1 ? 's' : ''} en attente de son joueur.</p>` : ''}`
+        : c.pendingMarks ? `<p class="small"><b>${c.pendingMarks}</b> coche${c.pendingMarks > 1 ? 's' : ''} à placer : passe en mode <b>Progression</b> et touche les compétences dans la Fiche. <button class="btn small gold" data-act="setMode" data-m="prog">Placer</button></p>` : ''}
     </section>
     <section class="card">
       <h2>Compétences cochées</h2>
@@ -1577,6 +1578,7 @@ function watchLent() {
         lentDocs.add(remote.id);
         if (!adoptLent(remote)) return;
         toast(`${remote.name} a été joué en ton absence : fiche mise à jour`);
+        marksReminded = false; setTimeout(remindMarks, 600); // coches gagnées pendant la séance jouée par un autre
         const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
         if (!typing && !dlg.open) render();
       }, () => { lentDocs.delete(c.id); });
@@ -3430,15 +3432,17 @@ const A = {
     const c = C();
     openDialog({
       title: 'Fin de séance',
-      body: `<p class="small muted">Chaque « oui » te donne une coche à placer sur la compétence de ton choix (une seule coche par compétence).</p>
-        <div class="checks one">${R.SESSION_QUESTIONS.map((q, i) => F.check(`q${i}`, q, i === 0)).join('')}${c.weakness ? F.check('qw', R.WEAKNESS_OVERCOME, false) : ''}</div>`,
+      // Personnage prêté : le joueur absent n'a pas participé ; c'est lui qui placera les coches
+      body: `<p class="small muted">${ui.guest ? `Réponds pour <b>${esc(c.name)}</b> : chaque « oui » donne une coche que <b>son joueur</b> placera (et il fera les jets d’amélioration).` : 'Chaque « oui » te donne une coche à placer sur la compétence de ton choix (une seule coche par compétence).'}</p>
+        <div class="checks one">${R.SESSION_QUESTIONS.map((q, i) => (i === 0 && ui.guest ? `<label class="check disabled"><input type="checkbox" name="q0" disabled><span>${q} <small class="muted">(non : son joueur était absent)</small></span></label>` : F.check(`q${i}`, q, i === 0))).join('')}${c.weakness ? F.check('qw', R.WEAKNESS_OVERCOME, false) : ''}</div>`,
       actions: [cancel, { label: 'Valider', primary: true, onClick: (f) => {
         const overcome = !!f.qw?.checked;
-        const n = R.SESSION_QUESTIONS.filter((_, i) => f[`q${i}`].checked && !(i === 4 && overcome)).length + (overcome ? 2 : 0);
+        const n = R.SESSION_QUESTIONS.filter((_, i) => f[`q${i}`].checked && !(i === 0 && ui.guest) && !(i === 4 && overcome)).length + (overcome ? 2 : 0);
         if (!n) return;
         if (overcome) { c.notes = `${c.notes ? `${c.notes}\n` : ''}Faiblesse surmontée (${fmtDate(Date.now())}) : ${c.weakness}`; c.weakness = ''; }
         c.pendingMarks = (+c.pendingMarks || 0) + n;
         logEntry(c, `Fin de séance : ${n} coche${n > 1 ? 's' : ''} à placer`, { type: 'marks', n });
+        if (ui.guest) { commit(); toast(`${n} coche${n > 1 ? 's' : ''} pour ${c.name} : son joueur les placera`); return; }
         ui.mode = 'prog'; ui.tab = 'fiche';
         commit();
         toast(`${n} coche${n > 1 ? 's' : ''} à placer : touche les compétences`);
@@ -3446,6 +3450,7 @@ const A = {
     });
   },
   advanceRolls() {
+    if (ui.guest) { toast('C’est son joueur qui fera les jets d’amélioration'); return; }
     const c = C();
     const marked = c.skills.filter((s) => s.mark);
     if (!marked.length) return;
@@ -3647,7 +3652,7 @@ store.onStatus((st, info) => {
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
   // MJ sans personnage : tant que le compte n'est pas reconnu, la première page s'affiche ; on redessine dès qu'il l'est
   if (welcomeToMJ()) { group.refresh(); mjSync(); return; }
-  if (info?.reloaded && !typing && !dlg.open) render();
+  if (info?.reloaded && !typing && !dlg.open) { render(); setTimeout(remindMarks, 300); }
   group.refresh();
   mjSync();
 });
@@ -3681,6 +3686,23 @@ if (!localStorage.getItem('dragonbane.v60link')) {
   const gid = group.shared?.id;
   if (gid && group.list.find((r) => r.id === gid)?.role !== 'mj') store.list().forEach((c) => { if (!c.groupId) { c.groupId = gid; store.save(); } });
 }
+// À l'ouverture : des coches à placer ou des jets d'amélioration à faire (par exemple après une séance jouée par un autre)
+let marksReminded = false;
+function remindMarks() {
+  const c = store.current();
+  if (marksReminded || !c || ui.guest || ui.mjView || C()?.stub || dlg.open) return;
+  const pend = +c.pendingMarks || 0; const marked = c.skills.filter((s) => s.mark).length;
+  if (!pend && !marked) return;
+  marksReminded = true;
+  const parts = [pend ? `<b>${pend}</b> coche${pend > 1 ? 's' : ''} de fin de séance à placer` : '', marked ? `<b>${marked}</b> compétence${marked > 1 ? 's' : ''} cochée${marked > 1 ? 's' : ''} : jets d’amélioration à faire` : ''].filter(Boolean);
+  openDialog({
+    title: 'Points à dépenser',
+    body: `<p><b>${esc(c.name)}</b> a ${parts.join(' et ')}.</p><p class="small muted">${pend ? 'Place les coches en mode Progression (touche les compétences dans la Fiche), puis lance les jets.' : 'D20 supérieur au niveau de la compétence = +1.'}</p>`,
+    actions: [{ label: 'Plus tard', cls: 'ghost', onClick: () => {} }, 'spacer',
+      pend ? { label: `${icon('star')} Placer les coches`, primary: true, onClick: () => { ui.mode = 'prog'; ui.tab = 'fiche'; setTimeout(render); } }
+        : { label: `${icon('d20')} Jets d’amélioration`, primary: true, onClick: () => { setTimeout(() => A.advanceRolls()); } }],
+  });
+}
 // Au lancement, le groupe affiché suit le personnage (sauf en mode MJ)
 {
   const c = store.current();
@@ -3689,6 +3711,7 @@ if (!localStorage.getItem('dragonbane.v60link')) {
   }
 }
 render();
+setTimeout(remindMarks, 800);
 store.sync();
 
 if ('serviceWorker' in navigator) {
