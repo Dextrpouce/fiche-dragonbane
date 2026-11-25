@@ -287,7 +287,9 @@ function viewFiche(c) {
     const on = c.conditions[key];
     return `<button class="attr ${on ? 'cond' : ''}" data-act="attr" data-k="${key}" title="${name}${on ? ` — ${cond} : désavantage` : ''}">
       <span class="ak">${key}</span><span class="av">${v}</span><span class="an">${name}</span>
-      <span class="ac">${on ? `⚠ ${cond}` : `Base ${R.baseChance(v)}`}</span>
+      ${isFree() ? `<span class="ac">Base ${R.baseChance(v)}</span>`
+        // En jeu : la ligne du bas est l'interrupteur de l'état lié (le reste de la case lance le dé)
+        : `<span class="ac cond-tog ${on ? 'on' : ''}" data-act="cond" data-k="${key}" role="button" title="${on ? `Retirer l’état ${cond}` : `Mettre l’état ${cond} (désavantage aux jets de ${name})`}">${on ? `⚠ ${cond}` : cond}</span>`}
     </button>`;
   }).join('');
 
@@ -321,7 +323,7 @@ function viewFiche(c) {
         <div class="stat"><div class="sk">Bonus AGI</div><div class="sv">${ab ? `+${ab}` : '—'}</div></div>
         <div class="stat ${used > lim ? 'over' : ''}"><div class="sk">Charge</div><div class="sv">${used}<small>/${lim}</small></div></div>
       </div>
-      <p class="small muted hint">${isFree() ? 'Touche un attribut pour modifier sa valeur.' : 'Touche un attribut pour lancer le D20 (réussite si ≤ valeur).'}</p>
+      <p class="small muted hint">${isFree() ? 'Touche un attribut pour modifier sa valeur.' : 'Touche un attribut pour lancer le D20 (réussite si ≤ valeur), ou l’étiquette du bas pour mettre ou retirer son état.'}</p>
     </section>
     <section class="card skills-card">
       <h2>Compétences</h2>

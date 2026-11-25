@@ -235,6 +235,10 @@ nav.tabs button.active::before { content: ''; position: absolute; top: 0; left: 
 .attr .ac { font-size: 12px; color: var(--ink-soft); }
 .attr.cond { border-color: var(--red); background: linear-gradient(rgba(179, 48, 42, .16), rgba(255, 255, 255, .3)); }
 .attr.cond .ac { color: var(--red); font-weight: 700; }
+/* Interrupteur d'état en bas de la case d'attribut : discret quand inactif, rouge quand actif */
+.attr .cond-tog { margin-top: 2px; padding: 1px 8px; border-radius: 999px; border: 1px dashed rgba(107, 90, 72, .45); opacity: .75; cursor: pointer; }
+.attr .cond-tog:hover { opacity: 1; border-color: var(--red); color: var(--red); }
+.attr .cond-tog.on { opacity: 1; border: 1px solid var(--red); background: rgba(179, 48, 42, .12); }
 
 .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
 .stats-row.two { grid-template-columns: 1fr 1fr; }

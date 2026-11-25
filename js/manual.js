@@ -20,6 +20,7 @@ export const MANUAL = [
     <p>À droite de chaque compétence, le losange vide <b>✧</b>. Tu as fait un Dragon ou un Démon avec tes dés ? Touche-le et confirme : la compétence est cochée <b>✦</b>.</p>`],
   ['Fiche', `
     <p>Tes attributs, compétences et capacités. En haut, le résumé : PV, PVol, déplacement, bonus aux dégâts et charge.</p>
+    <p>Sous chaque attribut, l’étiquette de son <b>état</b> (Épuisé, Malade, Étourdi…) : touche-la pour le mettre ou l’enlever, elle passe en rouge. Le reste de la case lance le dé.</p>
     <p>Les boutons au-dessus des compétences filtrent la liste : toutes, entraînées, armes ou cochées ✦.</p>`],
   ['Combat', `
     <p>Tout ce qu’il faut pendant un combat, sans rien modifier par erreur :</p>
