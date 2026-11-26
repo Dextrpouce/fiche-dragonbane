@@ -18,7 +18,7 @@ export function applyJournalOp(s, op) {
   const npc = (id) => s.npcs.find((x) => x.id === id) || fail('PNJ introuvable (supprimé ?)');
   const lieu = (id) => s.lieux.find((x) => x.id === id) || fail('Lieu introuvable (supprimé ?)');
   const nextN = () => s.journal.reduce((m, x) => Math.max(m, +x.n || 0), 0) + 1;
-  const cat = op.t.startsWith('j:npc') ? 'pnj' : op.t.startsWith('j:place') ? 'lieu' : op.t.startsWith('j:todo') ? 'piste' : 'session';
+  const cat = op.t.startsWith('j:npc') ? 'pnj' : op.t.startsWith('j:place') || op.t === 'j:map' || op.t === 'j:pin' ? 'lieu' : op.t.startsWith('j:todo') ? 'piste' : 'session';
   const ok = (text = '', key) => ({ text, changed: true, cat, ...(key ? { key } : {}) });
   // Dernier auteur d'un champ (journal partagé : op.by et op.at sont ajoutés par l'appli)
   const mark = (o, f) => { if (op.by) o.ed = { ...(o.ed || {}), [f]: { by: op.by, at: op.at || Date.now() } }; };
@@ -114,6 +114,17 @@ export function applyJournalOp(s, op) {
     case 'j:placeUnlink': {
       const x = ses(op.sid); x.placeIds = (x.placeIds || []).filter((id) => id !== op.pid);
       return ok(`${s.lieux.find((l) => l.id === op.pid)?.name || 'Lieu'} retiré de la session ${x.n}`);
+    }
+    // Carte de campagne : { img, w, h } (l'image est rangée à part) ; chaque lieu peut y avoir son épingle (pin : x, y de 0 à 1)
+    case 'j:map': {
+      s.map = op.map ? { img: op.map.img, w: +op.map.w, h: +op.map.h } : null;
+      if (!op.map) s.lieux.forEach((l) => { delete l.pin; });
+      return ok(op.map ? 'Carte de la campagne ajoutée' : 'Carte de la campagne retirée');
+    }
+    case 'j:pin': {
+      const l = lieu(op.pid);
+      if (op.pin) l.pin = { x: Math.min(1, Math.max(0, +op.pin.x)), y: Math.min(1, Math.max(0, +op.pin.y)) }; else delete l.pin;
+      return ok(op.pin ? `${l.name} placé sur la carte` : `${l.name} retiré de la carte`, `p|${op.pid}`);
     }
     case 'j:sketch': { const x = ses(op.sid); x.sketch = op.mid; return ok(`Session ${x.n} : page de croquis ajoutée`); }
     // Verser un journal personnel dans celui du groupe (les sessions déjà présentes sont ignorées)

@@ -209,6 +209,30 @@ export function watchMedia(g, id, onData, onError) {
 }
 export async function deleteMedia(g, id) { who(); await fb.deleteDoc(mediaDoc(g, id)); }
 
+// ----- Carte de campagne : groups/{code}/media/{id} (description) + {id}_p0, _p1… (image découpée, 1 Mo par document au plus) -----
+const MAP_PART = 900000;
+export async function putMapImage(g, id, data) {
+  who();
+  const n = Math.ceil(data.length / MAP_PART);
+  for (let i = 0; i < n; i++) await fb.setDoc(mediaDoc(g, `${id}_p${i}`), { kind: 'mappart', data: data.slice(i * MAP_PART, (i + 1) * MAP_PART) });
+  await fb.setDoc(mediaDoc(g, id), { kind: 'mapimg', parts: n, updatedAt: Date.now() });
+}
+export async function getMapImage(g, id) {
+  who();
+  const meta = await fb.getDoc(mediaDoc(g, id));
+  if (!meta.exists()) return null;
+  const n = meta.data().parts || 0;
+  const parts = await Promise.all(Array.from({ length: n }, (_, i) => fb.getDoc(mediaDoc(g, `${id}_p${i}`))));
+  return parts.map((p) => p.data()?.data || '').join('') || null;
+}
+export async function deleteMapImage(g, id) {
+  who();
+  const meta = await fb.getDoc(mediaDoc(g, id));
+  const n = meta.exists() ? meta.data().parts || 0 : 0;
+  for (let i = 0; i < n; i++) await fb.deleteDoc(mediaDoc(g, `${id}_p${i}`));
+  await fb.deleteDoc(mediaDoc(g, id));
+}
+
 // ----- Présence : « ✎ Léa écrit… » (groups/{code}/media/presence_{uid}, éphémère) -----
 export async function setPresence(g, field, name) {
   const u = who();

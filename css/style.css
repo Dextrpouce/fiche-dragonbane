@@ -906,3 +906,22 @@ button.wz-attr:disabled { opacity: .6; cursor: default; }
 .sheet-skill { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: .92rem; }
 .sheet-skill input { width: 54px; text-align: center; }
 .sheet-skill small { color: var(--ink-soft); }
+/* Carte de campagne */
+.j-map-card { padding: 10px; }
+.jmap { display: flex; flex-direction: column; gap: 6px; }
+.jmap-tools { display: flex; align-items: center; gap: 6px; }
+.jmap-view { position: relative; overflow: hidden; height: min(70vh, 640px); border-radius: 10px; background: #e6d8b8; touch-action: none; cursor: grab; user-select: none; }
+.jmap.placing .jmap-view { cursor: crosshair; outline: 2px dashed var(--red); outline-offset: -2px; }
+.jmap-inner { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.jmap-img { width: 100%; height: 100%; display: block; pointer-events: none; }
+.jmap-pins { position: absolute; inset: 0; }
+.map-pin { position: absolute; transform: translate(-50%, -100%) scale(var(--inv, 1)); transform-origin: 50% 100%; display: flex; flex-direction: column; align-items: center; background: none; border: 0; padding: 0; cursor: pointer; font: inherit; }
+.map-pin span { font-size: 22px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,.5)); }
+.map-pin small { margin-top: 1px; padding: 0 5px; border-radius: 6px; background: rgba(255, 250, 235, .92); border: 1px solid rgba(120, 90, 40, .45); font-size: 11px; white-space: nowrap; color: #3b2a14; }
+.map-pin.focus small { background: var(--red); color: #fff; }
+.jmap-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 20px; margin: 0; }
+.jmap.full { position: fixed; inset: 0; z-index: 50; background: #efe3c6; padding: 8px; }
+.jmap.full .jmap-view { flex: 1; height: auto; }
+.map-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.map-empty { padding: 30px 10px; }
+.jmap-msg[hidden] { display: none; }

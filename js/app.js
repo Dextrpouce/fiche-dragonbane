@@ -7,6 +7,7 @@ import * as media from './media.js';
 import { applyJournalOp } from './journal-ops.js';
 import * as L from './library.js';
 import * as CD from './creation-data.js';
+import * as MAP from './mapstore.js';
 import { MANUAL } from './manual.js';
 import { RULES } from './combat-rules.js';
 import { group, ACCOUNT_KINDS, fortune } from './group.js';
@@ -2005,6 +2006,7 @@ function placeCards(j) {
       ${mjNoteLine('l', l.id)}
       ${mjSecretBlock('l', l.id)}
       ${jEd(l, 'fiche')}
+      ${l.pin && J().map ? `<div class="npc-seen"><button class="chip" data-act="mapFocus" data-id="${l.id}">🗺️ Voir sur la carte</button></div>` : ''}
       ${npcs.length ? `<div class="npc-seen"><small class="muted">PNJ sur place :</small>${npcs.map((n) => `<button class="chip" data-act="npcOpen" data-id="${n.id}">${esc(n.name)}</button>`).join('')}</div>` : ''}
       ${seen.length ? `<div class="npc-seen"><small class="muted">Visité :</small>${seen.map((s) => `<button class="chip" data-act="jGoSession" data-id="${s.id}" title="${esc(s.title || '')}">S${s.n}</button>`).join('')}</div>` : ''}
     </article>`;
@@ -2041,6 +2043,7 @@ function placeDialog(lieu, linkTo = null) {
       ${j.npcs.length ? `<p class="small"><b>PNJ sur place</b></p><div class="place-npcs">${j.npcs.map((n) => `<label class="check"><input type="checkbox" name="npc_${n.id}" ${(cur.npcIds || []).includes(n.id) ? 'checked' : ''}><span>${esc(n.name)}</span></label>`).join('')}</div>` : ''}
       ${isMJ() ? `<div class="field full j-secret mj-own"><label>👑 Notes du MJ <small>visibles par toi seul</small></label><textarea name="mjnote" rows="3">${esc(lieu ? store.mjNote(group.shared.id, 'l', lieu.id) : '')}</textarea></div>` : ''}
       ${lieu ? mjSecretBlock('l', lieu.id) : ''}
+      ${lieu?.pin ? '<label class="check"><input type="checkbox" name="noPin"><span>Retirer l’épingle de la carte</span></label>' : ''}
       ${seen.length ? `<p class="small muted">Visité : ${seen.map((s) => `Session ${s.n}${s.title ? ` (${esc(s.title)})` : ''}`).join(', ')}</p>` : ''}
       ${img ? '<label class="check"><input type="checkbox" name="noPhoto"><span>Retirer l’image</span></label>' : ''}
       <div class="npc-zoom" hidden><img alt=""><small>Touche pour fermer</small></div>`,
@@ -2065,6 +2068,7 @@ function placeDialog(lieu, linkTo = null) {
           v.photo = id;
         }
         const pid = lieu?.id || R.uid();
+        if (lieu?.pin && f.noPin?.checked) jApply({ t: 'j:pin', pid, pin: null });
         if (f.mjnote) store.setMjNote(group.shared.id, 'l', pid, f.mjnote.value.trim());
         if (f.secret) { const c = C(); const t = f.secret.value.trim(); if (t) c.secret.l[pid] = t; else delete c.secret.l[pid]; c.updatedAt = Date.now(); store.save(); }
         if (isNew) jApply({ t: 'j:placeAdd', place: { id: pid, ...v }, sid: linkTo });
@@ -2100,22 +2104,35 @@ function viewJournal(c) {
   const shareInfo = sh ? `<p class="small j-shared">${icon('users')} Journal partagé avec le groupe « ${esc(sh.name)} » : tout le monde le voit et le complète.</p>
       ${media.error() ? `<p class="small bad">${esc(media.error())}</p>` : ''}
       ${(mine.s || mine.n) && !(c.jImportHide || []).includes(sh.id) ? `<p class="small j-import">${icon('upload')}<a href="#" data-act="jImport">Verser mon journal perso</a> <span class="muted">(${mine.s} session${mine.s > 1 ? 's' : ''}, ${mine.n} fiche${mine.n > 1 ? 's' : ''})</span><button class="j-import-x" data-act="jImportHide" title="Ne plus proposer pour ce groupe (reste possible depuis le menu ⋮)">✕ Ne plus proposer</button></p>` : ''}` : '';
-  if (!list.length) {
+  if (!list.length && ui.jView !== 'carte') {
     return `<section class="card journal-empty">
       <h2>Journal de campagne</h2>
       ${shareInfo}
       <p>Une page par séance : ce qui s’est passé, les PNJ, les lieux, le butin, les pistes à suivre, et une page de croquis pour dessiner au stylet (plans, cartes, notes griffonnées).</p>
-      <button class="btn" data-act="jNew">${icon('plus')} Première session</button>
+      <div class="add-row center-row"><button class="btn" data-act="jNew">${icon('plus')} Première session</button><button class="btn ghost" data-act="jView" data-v="carte">🗺️ Carte de la campagne</button></div>
       <p class="small muted">Sur iPad avec l’Apple Pencil, tu peux aussi écrire à la main directement dans les champs : l’iPad transforme l’écriture en texte. Sur Android, utilise le mode écriture manuscrite du clavier.</p>
     </section>`;
   }
   const cur = list.find((s) => s.id === (ui.jSession ?? localStorage.getItem('dragonbane.jSession'))) || list[0];
-  ui.jSession = cur.id; localStorage.setItem('dragonbane.jSession', cur.id); // session ouverte retenue d'un lancement à l'autre
+  if (cur) { ui.jSession = cur.id; localStorage.setItem('dragonbane.jSession', cur.id); } // session ouverte retenue d'un lancement à l'autre
   const open = list.flatMap((s) => (s.todos || []).map((t) => ({ s, t }))).filter((x) => !x.t.done);
   const sessions = list.map((s) => `<button class="j-item ${s === cur ? 'on' : ''}" data-act="jOpen" data-id="${s.id}" data-search="${esc(R.norm(sessionText(s, j)))}">
       <b>Session ${s.n}</b><span>${esc(s.title || 'Sans titre')}</span><small>${fmtDay(s.date)}${s.sketch ? ' · ✎' : ''}</small>
     </button>`).join('');
-  const jTabs = `<div class="filters j-tabs"><button class="chip ${ui.jView !== 'npcs' ? 'on' : ''}" data-act="jView" data-v="sessions">Sessions (${list.length})</button><button class="chip ${ui.jView === 'npcs' ? 'on' : ''}" data-act="jView" data-v="npcs">PNJ (${j.npcs.length})</button><button class="chip ${ui.jView === 'lieux' ? 'on' : ''}" data-act="jView" data-v="lieux">Lieux (${j.lieux.length})</button></div>${sh ? `<button class="btn ghost small hist-mini" data-act="history" data-f="journal">${icon('history')} Qui a modifié quoi</button>` : ''}`;
+  const jTabs = `<div class="filters j-tabs"><button class="chip ${ui.jView !== 'npcs' ? 'on' : ''}" data-act="jView" data-v="sessions">Sessions (${list.length})</button><button class="chip ${ui.jView === 'npcs' ? 'on' : ''}" data-act="jView" data-v="npcs">PNJ (${j.npcs.length})</button><button class="chip ${ui.jView === 'lieux' ? 'on' : ''}" data-act="jView" data-v="lieux">Lieux (${j.lieux.length})</button><button class="chip ${ui.jView === 'carte' ? 'on' : ''}" data-act="jView" data-v="carte">🗺️ Carte</button></div>${sh ? `<button class="btn ghost small hist-mini" data-act="history" data-f="journal">${icon('history')} Qui a modifié quoi</button>` : ''}`;
+  if (ui.jView === 'carte') {
+    const placed = j.lieux.filter((l) => l.pin);
+    return `<div class="grid journal">
+      <section class="card j-list">
+        <h2>Journal</h2>${shareInfo}${jTabs}
+        ${j.map ? `<button class="btn block ${ui.mapPlace ? 'gold' : ''}" data-act="mapPlace">📍 ${ui.mapPlace ? 'Touche la carte… (annuler)' : 'Placer un lieu'}</button>` : ''}
+        <button class="btn ghost small" data-act="mapUpload">${icon('upload')} ${j.map ? 'Changer l’image de la carte' : 'Choisir l’image de la carte'}</button>
+        <p class="small muted">${sh ? 'La carte est partagée avec le groupe : chacun peut y placer les lieux du journal.' : 'Carte du journal personnel : l’image reste sur cet appareil.'} Touche une épingle pour ouvrir la fiche du lieu. Glisse pour te déplacer, pince ou molette pour zoomer.</p>
+        ${placed.length ? `<div class="map-list">${[...placed].sort((a, b) => a.name.localeCompare(b.name, 'fr')).map((l) => `<button class="chip" data-act="mapFocus" data-id="${l.id}">${(PLACE_KINDS[l.kind] || PLACE_KINDS.autre)[1]} ${esc(l.name)}</button>`).join('')}</div>` : ''}
+      </section>
+      <section class="card j-map-card">${mapHtml(j)}</section>
+    </div>`;
+  }
   if (ui.jView === 'lieux') {
     return `<div class="grid journal">
       <section class="card j-list">
@@ -2209,7 +2226,103 @@ function viewJournal(c) {
 }
 // Après l'affichage : active la zone de dessin (et son suivi en direct pour le groupe)
 function stopSketchWatch() { sketchWatch?.(); sketchWatch = null; }
+// ---------- Carte de campagne ----------
+function mapHtml(j) {
+  if (!j.map) return `<div class="empty map-empty"><p>Pas encore de carte.</p><p class="small muted">Choisis une image (JPEG ou PNG) : la carte de votre campagne, celle du livre ou un plan dessiné. Vous y placerez ensuite les lieux du journal.</p><button class="btn" data-act="mapUpload">${icon('upload')} Choisir l’image</button></div>`;
+  const pins = j.lieux.filter((l) => l.pin).map((l) => `<button class="map-pin ${ui.mapFocusId === l.id ? 'focus' : ''}" style="left:${l.pin.x * 100}%;top:${l.pin.y * 100}%" data-pin="${l.id}" title="${esc(l.name)}"><span>${(PLACE_KINDS[l.kind] || PLACE_KINDS.autre)[1]}</span><small>${esc(l.name)}</small></button>`).join('');
+  return `<div class="jmap ${ui.mapFull ? 'full' : ''} ${ui.mapPlace ? 'placing' : ''}">
+    <div class="jmap-tools"><button class="sk-btn" data-act="mapZoom" data-d="1" title="Zoomer">${icon('plus')}</button><button class="sk-btn" data-act="mapZoom" data-d="-1" title="Dézoomer">−</button><button class="sk-btn" data-act="mapZoom" data-d="0" title="Toute la carte">⤢</button>
+      <span class="spacer"></span>${ui.mapFull ? `<button class="btn small ${ui.mapPlace ? 'gold' : 'ghost'}" data-act="mapPlace">📍</button>` : ''}<button class="btn small" data-act="mapFull">${icon('expand')} ${ui.mapFull ? 'Fermer' : 'Plein écran'}</button></div>
+    <div class="jmap-view" style="--ratio:${j.map.w}/${j.map.h}"><div class="jmap-inner"><img class="jmap-img" alt="Carte de la campagne" draggable="false"><div class="jmap-pins">${pins}</div></div>
+      <p class="jmap-msg small muted">Chargement de la carte…</p></div>
+  </div>`;
+}
+const mapView = { z: 1, x: 0, y: 0 };
+function mountMap() {
+  const wrap = document.querySelector('.jmap'); if (!wrap) return;
+  const j = J(); const view = wrap.querySelector('.jmap-view'); const inner = wrap.querySelector('.jmap-inner'); const img = wrap.querySelector('.jmap-img');
+  const msg = wrap.querySelector('.jmap-msg');
+  const show = (data) => { if (!data) { msg.textContent = jShared() ? 'Image introuvable : connecte-toi, ou choisis-la à nouveau.' : 'Image absente sur cet appareil : choisis-la à nouveau.'; return; } img.src = data; msg.hidden = true; };
+  const now = MAP.cached(j.map.img);
+  if (now) show(now); else MAP.load(j.map.img, group.shared?.id).then(show).catch(() => show(null));
+  // Zoom et déplacement : la carte remplit la largeur ; z de 1 à 8
+  const fit = () => { const vw = view.clientWidth; inner.style.width = `${vw}px`; inner.style.height = `${vw * j.map.h / j.map.w}px`; };
+  const clampView = () => {
+    const vw = view.clientWidth; const vh = view.clientHeight; const w = vw * mapView.z; const h = (vw * j.map.h / j.map.w) * mapView.z;
+    mapView.x = w <= vw ? (vw - w) / 2 : Math.min(0, Math.max(vw - w, mapView.x));
+    mapView.y = h <= vh ? (vh - h) / 2 : Math.min(0, Math.max(vh - h, mapView.y));
+  };
+  const apply = () => { clampView(); inner.style.transform = `translate(${mapView.x}px, ${mapView.y}px) scale(${mapView.z})`; inner.style.setProperty('--inv', 1 / mapView.z); };
+  const zoomAt = (k, cx, cy) => {
+    const z = Math.min(8, Math.max(1, mapView.z * k)); const f = z / mapView.z;
+    mapView.x = cx - (cx - mapView.x) * f; mapView.y = cy - (cy - mapView.y) * f; mapView.z = z; apply();
+  };
+  fit(); apply();
+  mapCtl = { zoom: (d) => { const r = view.getBoundingClientRect(); if (!d) { mapView.z = 1; apply(); } else zoomAt(d > 0 ? 1.5 : 1 / 1.5, r.width / 2, r.height / 2); },
+    focus: (l) => { if (!l?.pin) return; const vw = view.clientWidth; const vh = view.clientHeight; mapView.z = Math.max(mapView.z, 3); mapView.x = vw / 2 - l.pin.x * vw * mapView.z; mapView.y = vh / 2 - l.pin.y * (vw * j.map.h / j.map.w) * mapView.z; apply(); } };
+  if (ui.mapFocusId) { const l = j.lieux.find((x) => x.id === ui.mapFocusId); setTimeout(() => mapCtl?.focus(l)); }
+  view.onwheel = (e) => { e.preventDefault(); const r = view.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.2 : 1 / 1.2, e.clientX - r.left, e.clientY - r.top); };
+  const pts = new Map(); let start = null; let pinch = null;
+  view.onpointerdown = (e) => {
+    try { view.setPointerCapture(e.pointerId); } catch { /* pointeur déjà relâché */ } pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 1) start = { x: e.clientX, y: e.clientY, vx: mapView.x, vy: mapView.y, t: Date.now(), target: e.target, moved: false };
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: mapView.z }; if (start) start.moved = true; }
+  };
+  view.onpointermove = (e) => {
+    if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2 && pinch) {
+      const [a, b] = [...pts.values()]; const r = view.getBoundingClientRect();
+      zoomAt((pinch.z * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d) / mapView.z, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top);
+    } else if (start) {
+      const dx = e.clientX - start.x; const dy = e.clientY - start.y;
+      if (Math.abs(dx) + Math.abs(dy) > 6) start.moved = true;
+      if (start.moved) { mapView.x = start.vx + dx; mapView.y = start.vy + dy; apply(); }
+    }
+  };
+  view.onpointerup = view.onpointercancel = (e) => {
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (pts.size || !start) return;
+    const s = start; start = null;
+    if (s.moved || e.type === 'pointercancel') return;
+    // Toucher : une épingle ouvre son lieu ; en mode « Placer », la carte reçoit un lieu
+    const pin = s.target.closest?.('[data-pin]');
+    if (pin && !ui.mapPlace) { const l = J().lieux.find((x) => x.id === pin.dataset.pin); if (l) placeDialog(l); return; }
+    if (ui.mapPlace) {
+      const r = inner.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width; const y = (e.clientY - r.top) / r.height;
+      if (x >= 0 && x <= 1 && y >= 0 && y <= 1) mapPlaceDialog(x, y);
+    }
+  };
+}
+let mapCtl = null;
+// Placer un lieu (existant ou nouveau) à l'endroit touché
+function mapPlaceDialog(x, y) {
+  const j = J();
+  const free = j.lieux.filter((l) => !l.pin).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const placed = j.lieux.filter((l) => l.pin).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  openDialog({
+    title: 'Placer un lieu ici',
+    body: `<div class="fields">
+        ${F.select('pid', 'Lieu', free[0]?.id || '', [['', '— Nouveau lieu —'], ...free.map((l) => [l.id, l.name]), ...placed.map((l) => [l.id, `${l.name} (déplacer ici)`])], 'full')}
+        ${F.text('name', 'Nom du nouveau lieu', '', 'full new-only', 'placeholder="Ex. Le Gué aux Corbeaux"')}
+        ${F.select('kind', 'Type', 'village', Object.entries(PLACE_KINDS).map(([k, [l, i]]) => [k, `${i} ${l}`]), 'new-only')}
+      </div>`,
+    actions: [cancel, { label: '📍 Placer', primary: true, onClick: (f) => {
+      const pin = { x, y };
+      if (f.pid.value) jApply({ t: 'j:pin', pid: f.pid.value, pin });
+      else {
+        const name = f.name.value.trim(); if (!name) { toast('Donne un nom au lieu'); return false; }
+        jApply({ t: 'j:placeAdd', place: { id: R.uid(), name, kind: f.kind.value, where: '', notes: '', npcIds: [], pin } });
+      }
+      ui.mapPlace = false; render();
+    } }],
+    onOpen: (f) => { const sync = () => f.querySelectorAll('.new-only').forEach((el) => { el.style.display = f.pid.value ? 'none' : ''; }); f.pid.onchange = sync; sync(); },
+  });
+}
+
 function afterJournal() {
+  mapCtl = null; if (ui.jView === 'carte') mountMap();
   stopSketchWatch();
   const wrap = document.querySelector('.sketch[data-sketch]');
   if (!wrap) { sketchCtl = null; return; }
@@ -2235,6 +2348,7 @@ function filterJournal() {
 }
 window.addEventListener('resize', () => { if (sketchCtl && document.querySelector('.sketch')) sketchCtl.resize(); });
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.querySelector('.sketch.full') && !dlg.open) A.skFull(); });
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ui.mapFull && !dlg.open) A.mapFull(); });
 // Une image ou un croquis du groupe vient d'arriver : on redessine (sauf pendant la frappe)
 media.setOnArrive(() => {
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
@@ -3425,7 +3539,25 @@ const A = {
     const id = R.uid();
     if (jApply({ t: 'j:new', session: { id, date: todayISO() } }, false)) { ui.jSession = id; ui.jSearch = ''; ui.jView = 'sessions'; render(); window.scrollTo(0, 0); }
   },
-  jView(el) { ui.jView = el.dataset.v; ui.jSearch = ''; render(); },
+  jView(el) { ui.jView = el.dataset.v; ui.jSearch = ''; ui.mapPlace = false; render(); },
+  mapPlace() { ui.mapPlace = !ui.mapPlace; if (ui.mapPlace) toast('Touche la carte à l’endroit du lieu'); render(); },
+  mapZoom(el) { mapCtl?.zoom(+el.dataset.d); },
+  mapFull() { ui.mapFull = !ui.mapFull; render(); },
+  mapFocus(el) { ui.mapFocusId = el.dataset.id; ui.jView = 'carte'; render(); setTimeout(() => { ui.mapFocusId = null; }, 3000); },
+  mapUpload() {
+    chooseImage(false, async (file) => {
+      try {
+        toast('Préparation de la carte…');
+        const { data, w, h } = await MAP.readImage(file);
+        const old = J().map?.img; const id = `carte_${R.uid()}`;
+        await MAP.save(id, data, group.shared?.id);
+        jApply({ t: 'j:map', map: { img: id, w, h } });
+        if (old) MAP.remove(old, group.shared?.id);
+        Object.assign(mapView, { z: 1, x: 0, y: 0 });
+        toast(group.shared ? 'Carte partagée avec le groupe' : 'Carte enregistrée sur cet appareil');
+      } catch (e) { toast(media.error() || e.message || 'Image refusée'); }
+    });
+  },
   jGoSession(el) { ui.jView = 'sessions'; ui.jSession = el.dataset.id; ui.jSearch = ''; render(); document.querySelector('.j-page')?.scrollIntoView({ block: 'start' }); },
   history(el) { historyDialog(el?.dataset?.f || 'all'); },
   npcNew() { npcDialog(null); },
